@@ -6,7 +6,9 @@
 # shellcheck shell=bash
 
 restore() {
+    # Unlink first: `cp` writes THROUGH a destination symlink, and G21's probe plants one.
     for target in "${TARGETS[@]}"; do
+        rm -f -- "$target"
         cp -a -- "$BACKUP/$target" "$target"
     done
 }

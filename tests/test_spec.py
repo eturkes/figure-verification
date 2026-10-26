@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""S1-S9: liveness invariants of the attached state and the law surface around it.
+"""S1-S11: liveness invariants of the attached state and the law surface around it.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
 and read every line as current law. Liveness itself is a judgment no test can make. What IS
@@ -37,6 +37,8 @@ import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
+
+import yaml
 
 from trackers import names_tracker, open_units
 
@@ -459,3 +461,83 @@ def test_s9_phase_names_the_phase_and_its_scope() -> None:
     name = re.split(r"[^A-Z]", phase, maxsplit=1)[0]
     assert name in _PHASES, f"Phase opens with no phase name: {phase[:40]!r}"
     assert _SCOPE.match(phase, len(name)), f"Phase names no scope: {phase[:40]!r}"
+
+
+# S10: Claude Code reads a rule's `paths:` globs from YAML frontmatter. A frontmatter that does not
+# parse, or a glob no tracked file matches, injects its rule nowhere -- silently, since a rule that
+# never loads and a rule that loads print the same nothing. `CLAUDE.md` `Authoring` asks for quoted
+# globs (an unquoted `*`, `[` or `{` opening a scalar is YAML syntax), so every item is read raw.
+_AGENTS = _REPO_ROOT / ".claude" / "agents"
+_FRONTMATTER = re.compile(r"\A---\n(.*?\n)---\n", re.DOTALL)
+_QUOTED_GLOB = re.compile(r'  - "[^"\\]+"')
+
+
+def _glob(pattern: str) -> re.Pattern[str]:
+    """A `paths:` glob over repo-relative paths: `**/` = any directories, none included; a closing
+    `**` = anything; `*` and `?` stay inside one path segment."""
+    parts = re.split(r"(\*\*/|\*\*|\*|\?)", pattern)
+    wild = {"**/": "(?:[^/]*/)*", "**": ".*", "*": "[^/]*", "?": "[^/]"}
+    return re.compile("".join(wild.get(part, re.escape(part)) for part in parts) + r"\Z")
+
+
+def _frontmatter_faults(path: Path, tracked: frozenset[str]) -> list[str]:
+    name = path.relative_to(_REPO_ROOT).as_posix()
+    text = path.read_text(encoding="utf-8")
+    match = _FRONTMATTER.match(text)
+    if match is None:
+        return [f"{name}: frontmatter never closes"] if text.startswith("---\n") else []
+    try:
+        data = yaml.safe_load(match[1])
+    except yaml.YAMLError as exc:
+        return [f"{name}: frontmatter does not parse: {str(exc).splitlines()[0]}"]
+    if path.parent != _RULES:
+        return []
+    if not isinstance(data, dict) or set(data) != {"paths"} or not isinstance(data["paths"], list):
+        return [f"{name}: frontmatter is not one `paths:` list"]
+    faults = [
+        f"{name}: unquoted glob {line.strip()!r}"
+        for line in match[1].splitlines()[1:]
+        if not _QUOTED_GLOB.fullmatch(line)
+    ]
+    return faults + [
+        f"{name}: {glob!r} matches no tracked file"
+        for glob in data["paths"]
+        if not any(_glob(str(glob)).match(file) for file in tracked)
+    ]
+
+
+def test_s10_every_rule_frontmatter_parses_and_each_glob_reaches_a_tracked_file() -> None:
+    """S10: each `.claude/rules/*.md` frontmatter (and each `.claude/agents/*.md` one) parses;
+    a rule's is one `paths:` list of double-quoted globs, each matching at least one tracked file.
+    Acceptance: an unparsable frontmatter, an unquoted glob and a glob matching nothing each fail
+    naming the file."""
+    tracked = _tracked()
+    sources = [*sorted(_RULES.glob("*.md")), *sorted(_AGENTS.glob("*.md"))]
+    assert sources, "no rules or agents found"
+    faults = [fault for path in sources for fault in _frontmatter_faults(path, tracked)]
+    assert not faults, f"rules frontmatter faults: {faults}"
+
+
+# S11: an `@path` import loads a file Claude Code leaves unloaded (`.agent/spec.md`); `CLAUDE.md`,
+# `.claude/rules/` + `.claude/agents/` load on their own, so importing one loads it twice, and an
+# import of a path no commit carries loads nothing. Code spans and blocks import nothing.
+_IMPORT = re.compile(r"(?<![\w@`])@([^\s`)\]>]+)")
+_CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
+_LOADED = re.compile(r"(?:.*/)?CLAUDE(?:\.local)?\.md|\.claude/(?:rules|agents)/.*")
+
+
+def test_s11_every_import_names_a_tracked_file_claude_code_leaves_unloaded() -> None:
+    """S11: every `@path` import in `CLAUDE.md`, `.claude/rules/*.md` and `.claude/agents/*.md`
+    (outside code) names a tracked file Claude Code does not load on its own. Acceptance: an import
+    of `.claude/rules/ops.md` fails, and so does one of an untracked path."""
+    tracked = _tracked()
+    faults = []
+    for path in [_REPO_ROOT / "CLAUDE.md", *sorted(_RULES.glob("*.md")), *_AGENTS.glob("*.md")]:
+        name = path.relative_to(_REPO_ROOT).as_posix()
+        for token in _IMPORT.findall(_CODE.sub("", path.read_text(encoding="utf-8"))):
+            target = token.rstrip(".,;:")
+            if _LOADED.fullmatch(target):
+                faults.append(f"{name}: imports {target}, which Claude Code loads on its own")
+            elif target not in tracked:
+                faults.append(f"{name}: imports {target}, which no commit carries")
+    assert not faults, f"import faults: {faults}"

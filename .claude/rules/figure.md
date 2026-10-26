@@ -4,7 +4,6 @@ paths:
   - "**/tests/test_figure*.py"
   - "**/tests/figure_corpus/**"
   - "**/webui/paste_in/**"
-  - "**/.agent/contracts/m19*.md"
   - "**/webui/banner.json"
 ---
 

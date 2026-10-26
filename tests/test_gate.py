@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G20: static-config invariants of the one gate command.
+"""G6-G25: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
@@ -312,24 +312,23 @@ def test_g13_audit_stage_covers_every_lock() -> None:
     assert audited == locks, f"audited {sorted(audited)} != tracked locks {sorted(locks)}"
 
 
+def _tracked_paths() -> list[str]:
+    listed = subprocess.run(
+        ["/usr/bin/git", "ls-files", "-z"], cwd=_REPO_ROOT, capture_output=True, check=True
+    )
+    return [name for name in listed.stdout.decode().split("\0") if name]
+
+
 def test_g14_tracked_sources_carry_spdx_header() -> None:
     """G14: tracked sources carry the licensed comment in their first three lines.
 
     Generated lockfiles (`uv.lock`, `pnpm-lock.yaml`) are exempt.
     Acceptance: every missing source path appears in the failure message.
     """
-    tracked = subprocess.run(
-        ["/usr/bin/git", "ls-files", "-z"],
-        cwd=_REPO_ROOT,
-        capture_output=True,
-        check=True,
-    )
     suffixes = {".py", ".sh", ".mjs", ".js", ".toml", ".yml", ".yaml"}
     lockfiles = {"uv.lock", "pnpm-lock.yaml"}
     missing = []
-    for name in sorted(tracked.stdout.decode("utf-8").split("\0")):
-        if not name:
-            continue
+    for name in sorted(_tracked_paths()):
         path = Path(name)
         if path.suffix not in suffixes or path.name in lockfiles:
             continue
@@ -599,3 +598,124 @@ def test_g20_a_probe_run_whose_targets_did_not_restore_fails(tmp_path: Path) -> 
     assert run(good, 0, "good").returncode == 0
     assert not (tmp_path / "good").exists()
     assert run(good, 1, "probe-failed").returncode == 1
+
+
+def test_g21_every_tracked_symlink_resolves_inside_the_repository() -> None:
+    """G21 (code review R298; `CLAUDE.md` `Execution`: no dangling symlinks): a tracked symlink
+    points at an existing path inside the repository -- a dangling one checks out as nothing, and
+    one leaving the tree reads a machine's own file. Acceptance: a tracked file replaced by a link
+    to a missing target fails naming it."""
+    root = _REPO_ROOT.resolve()
+    faults = []
+    for name in _tracked_paths():
+        path = _REPO_ROOT / name
+        if not path.is_symlink():
+            continue
+        target = path.resolve()
+        if not target.exists():
+            faults.append(f"{name}: dangling symlink")
+        elif not target.is_relative_to(root):
+            faults.append(f"{name}: symlink leaves the repository")
+    assert not faults, f"tracked symlink faults: {faults}"
+
+
+# A home directory in a live tracked file binds it to one machine (`CLAUDE.md` `Authoring`: project
+# files stay portable; machine-bound facts -> `CLAUDE.local.md`). Archived records keep the paths
+# they ran on, and the ledger quotes firing inputs verbatim.
+_HOME_PATH = re.compile(r"(?<![\w.])/(?:home|Users|root)/[\w.-]+|\b[A-Za-z]:\\Users\\")
+_PORTABILITY_EXEMPT = (".agent/archive/", ".agent/review.md")
+
+
+def test_g22_no_live_tracked_file_names_a_home_directory() -> None:
+    """G22 (code review R300): no tracked text file outside the archive + ledger names a home
+    directory (`/home/<user>`, `/Users/<user>`, `/root/…`, `C:\\Users\\`). Acceptance: a rules file
+    gaining one fails naming its `file:line`."""
+    faults = []
+    for name in _tracked_paths():
+        if name.startswith(_PORTABILITY_EXEMPT) or (_REPO_ROOT / name).is_symlink():
+            continue
+        try:
+            text = (_REPO_ROOT / name).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        faults += [
+            f"{name}:{number}"
+            for number, line in enumerate(text.splitlines(), 1)
+            if _HOME_PATH.search(line)
+        ]
+    assert not faults, f"machine paths in live tracked files: {faults}"
+
+
+def _shell_function(path: Path, name: str) -> str:
+    body = re.search(rf"^{name}\(\) \{{\n(.*?)^\}}", path.read_text(), re.MULTILINE | re.DOTALL)
+    assert body is not None, f"{name} missing from {path.name}"
+    return body.group(1)
+
+
+def test_g23_both_suites_run_parallel_with_their_slowest_tests_and_each_stage_times_itself() -> (
+    None
+):
+    """G23 (code review R303; `CLAUDE.md` `Execution` gate clause): `run_tests` + `run_tests_py311`
+    run `pytest -n auto` with `--durations=10`, and a run prints `<stage> rc=N <s>s` per stage +
+    `gate rc=N <s>s`. Acceptance: either suite losing `-n auto` or `--durations=10` fails, and so
+    does a run whose stage lines carry no wall-clock."""
+    for function in ("run_tests", "run_tests_py311"):
+        argv = _shell_function(_GATE, function)
+        assert "pytest -n auto" in argv and "--durations=10" in argv, (
+            f"{function} lost its suite argv: {argv}"
+        )
+    run = subprocess.run(  # noqa: S603 - the tracked gate, one fast stage
+        ["bash", str(_GATE), "spec"],  # noqa: S607 - bash from PATH, as the gate runs it
+        cwd=_REPO_ROOT,
+        env=_ci_env(ci=False),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    timed = [line for line in run.stdout.splitlines() if re.fullmatch(r"\w+ rc=\d+ \d+\.\ds", line)]
+    assert [line.split()[0] for line in timed] == ["spec", "gate"], (
+        f"stage lines without wall-clock: {run.stdout}"
+    )
+
+
+def test_g24_the_default_hypothesis_profile_is_derandomized() -> None:
+    """G24 (code review R304): with `HYPOTHESIS_PROFILE` unset the suite loads `ci` -- derandomized,
+    no deadline -- so every run reproduces; `dev` stays opt-in. Acceptance: a default profile that
+    randomizes fails."""
+    probe = (
+        "import conftest\nfrom hypothesis import settings\n"
+        "print(settings().derandomize, settings().deadline)"
+    )
+    env = {key: value for key, value in os.environ.items() if key != "HYPOTHESIS_PROFILE"}
+    loaded = subprocess.run(  # noqa: S603 - fixed argv
+        [sys.executable, "-c", probe],
+        cwd=_REPO_ROOT / "tests",
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert loaded.stdout.split() == ["True", "None"], (
+        f"the default Hypothesis profile randomizes: {loaded.stdout}"
+    )
+
+
+_FAST_GATE = _REPO_ROOT / "tools" / "fast-gate.sh"
+
+
+def test_g25_the_fast_gate_runs_every_cheap_stage_and_names_the_rest_skipped() -> None:
+    """G25 (code review R308; `CLAUDE.md` `Execution` fast gate): `tools/fast-gate.sh` runs
+    `format lint types workflows spec shell` and reports `tests311 audit secrets coverage` skipped,
+    so its stages + skips + the named tests cover the gate's stage list and it never claims green.
+    Acceptance: a dropped stage fails, and so does a dropped skip name."""
+    text = _FAST_GATE.read_text()
+    ran = tuple(re.findall(r"^\s*parallel (\w+) \w+$", text, re.MULTILINE))
+    skipped = re.search(r"^skipped=\(([^)]*)\)$", text, re.MULTILINE)
+    assert ran == ("format", "lint", "types", "workflows", "spec", "shell"), (
+        f"fast-gate stages drifted: {ran}"
+    )
+    names = skipped.group(1).split() if skipped else []
+    assert names == ["tests311", "audit", "secrets", "coverage"], (
+        f"fast-gate skip names drifted: {names}"
+    )
+    assert set(ran) | {"tests311", "audit", "secrets", "tests"} == set(_EXPECTED_STAGES)

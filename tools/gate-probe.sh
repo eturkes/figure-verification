@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G20, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G25, tests/test_spec.py S1-S11, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
@@ -42,8 +42,9 @@ PYPROJECT=pyproject.toml
 WEBUI_RUNTIME=webui/runtime/pyproject.toml
 CONFTEST=tests/conftest.py
 TRACKERS=tests/trackers.py
+FAST_GATE=tools/fast-gate.sh
 RESTORE=tools/probe-restore.sh
-TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST" "$TRACKERS")
+TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST" "$TRACKERS" "$FAST_GATE")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -151,6 +152,24 @@ plant_untracked_class_decorator() {
 
 plant_untracked_class_pytestmark() {
     printf '\n\nclass TestG93ClassPytestmarkProbe:\n    pytestmark = pytest.mark.skip(reason="probe")\n\n    def test_case(self) -> None:\n        """Probe."""\n' >>"$TEST_GATE"
+}
+
+plant_dangling_symlink() {
+    rm -f -- "$DEPENDABOT"
+    ln -s no-such-target "$DEPENDABOT"
+}
+
+# Assembled at run time: G22 scans this script too.
+plant_machine_path() {
+    printf '\nSee %shome/%s/notes.\n' / probe-user >>"$OWUI"
+}
+
+plant_loaded_import() {
+    printf '\n@.claude/rules/owui.md\n' >>"$OPS"
+}
+
+plant_untracked_import() {
+    printf '\n@.agent/no-such-file.md\n' >>"$OPS"
 }
 
 plant_unarchived_closed_unit() {
@@ -356,6 +375,40 @@ probe g18-ci-collection-skip tests/test_gate.py::test_g18_a_collection_time_skip
     'a collection-time skip under CI passed the suite' \
     sed -i '/importorskip/{n;s/_collect(report)/pass/}' "$CONFTEST"
 
+probe g21-dangling-symlink tests/test_gate.py::test_g21_every_tracked_symlink_resolves_inside_the_repository \
+    'dangling symlink' \
+    plant_dangling_symlink
+
+probe g22-machine-path tests/test_gate.py::test_g22_no_live_tracked_file_names_a_home_directory \
+    'machine paths in live tracked files' \
+    plant_machine_path
+
+# G23: one probe per conjunct -- each suite's argv, then the stage lines' wall-clock.
+probe g23-suite-argv tests/test_gate.py::test_g23_both_suites_run_parallel_with_their_slowest_tests_and_each_stage_times_itself \
+    'run_tests lost its suite argv' \
+    sed -i 's/pytest -n auto --durations=10$/pytest -n auto/' "$GATE"
+
+probe g23-py311-argv tests/test_gate.py::test_g23_both_suites_run_parallel_with_their_slowest_tests_and_each_stage_times_itself \
+    'run_tests_py311 lost its suite argv' \
+    sed -i 's/--no-cov --durations=10 /--no-cov /' "$GATE"
+
+probe g23-stage-timing tests/test_gate.py::test_g23_both_suites_run_parallel_with_their_slowest_tests_and_each_stage_times_itself \
+    'stage lines without wall-clock' \
+    sed -i 's/^    printf .%d\.%d. .*$/    :/' "$GATE"
+
+probe g24-hypothesis-default tests/test_gate.py::test_g24_the_default_hypothesis_profile_is_derandomized \
+    'the default Hypothesis profile randomizes' \
+    sed -i 's/"HYPOTHESIS_PROFILE", "ci"/"HYPOTHESIS_PROFILE", "dev"/' "$CONFTEST"
+
+# G25: a dropped stage, then a dropped skip name.
+probe g25-fast-gate-stage tests/test_gate.py::test_g25_the_fast_gate_runs_every_cheap_stage_and_names_the_rest_skipped \
+    'fast-gate stages drifted' \
+    sed -i '/^parallel spec spec_check$/d' "$FAST_GATE"
+
+probe g25-fast-gate-skips tests/test_gate.py::test_g25_the_fast_gate_runs_every_cheap_stage_and_names_the_rest_skipped \
+    'fast-gate skip names drifted' \
+    sed -i 's/^skipped=(tests311 audit secrets coverage)$/skipped=(tests311 audit coverage)/' "$FAST_GATE"
+
 probe g20-restore-exit tests/test_gate.py::test_g20_a_probe_run_whose_targets_did_not_restore_fails \
     'a failed restore kept the run green' \
     sed -i '/|| rc=3$/d' "$RESTORE"
@@ -497,6 +550,29 @@ probe s8-untracked-class-decorator tests/test_spec.py::test_s8_every_disabled_ca
 probe s8-untracked-class-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_class_pytestmark
+
+# S10: one probe per frontmatter fault -- YAML that does not parse, an unquoted glob, a glob that
+# reaches no tracked file. S11: one per import fault -- a file Claude Code loads on its own, a path
+# no commit carries. Each plants into a rule file (S10 + S11 read rule files alone, so literals).
+probe s10-unparsable-frontmatter tests/test_spec.py::test_s10_every_rule_frontmatter_parses_and_each_glob_reaches_a_tracked_file \
+    'frontmatter does not parse' \
+    sed -i '2a\  - [unclosed' "$OWUI"
+
+probe s10-unquoted-glob tests/test_spec.py::test_s10_every_rule_frontmatter_parses_and_each_glob_reaches_a_tracked_file \
+    'unquoted glob' \
+    sed -i '2a\  - webui/launch.sh' "$OWUI"
+
+probe s10-dead-glob tests/test_spec.py::test_s10_every_rule_frontmatter_parses_and_each_glob_reaches_a_tracked_file \
+    'matches no tracked file' \
+    sed -i '2a\  - "no-such-dir/*.probe"' "$OWUI"
+
+probe s11-loaded-import tests/test_spec.py::test_s11_every_import_names_a_tracked_file_claude_code_leaves_unloaded \
+    'which Claude Code loads on its own' \
+    plant_loaded_import
+
+probe s11-untracked-import tests/test_spec.py::test_s11_every_import_names_a_tracked_file_claude_code_leaves_unloaded \
+    'which no commit carries' \
+    plant_untracked_import
 
 probe s9-phase-without-name tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
     'Phase opens with no phase name' \
