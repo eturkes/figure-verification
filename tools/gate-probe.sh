@@ -41,8 +41,9 @@ SPDX_PROBE=tools/mutate.py
 PYPROJECT=pyproject.toml
 WEBUI_RUNTIME=webui/runtime/pyproject.toml
 CONFTEST=tests/conftest.py
+TRACKERS=tests/trackers.py
 RESTORE=tools/probe-restore.sh
-TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST")
+TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST" "$TRACKERS")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -346,6 +347,10 @@ probe g18-ci-skipped-stage tests/test_gate.py::test_g18_a_stage_skipped_under_ci
 probe g18-ci-untracked-skip tests/test_gate.py::test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite \
     'an untracked skip under CI passed the suite' \
     sed -i 's/session.exitstatus = pytest.ExitCode.TESTS_FAILED/pass/' "$CONFTEST"
+
+probe g18-ci-closed-tracker tests/test_gate.py::test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite \
+    'a skip naming no open Tasks unit passed under CI' \
+    sed -i 's/any(unit in spine for unit in/any(True for unit in/' "$TRACKERS"
 
 probe g18-ci-collection-skip tests/test_gate.py::test_g18_a_collection_time_skip_under_ci_fails_the_suite \
     'a collection-time skip under CI passed the suite' \

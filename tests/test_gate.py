@@ -436,21 +436,36 @@ def test_g18_a_stage_skipped_under_ci_fails_the_gate(tmp_path: Path) -> None:
     assert "skipped under CI" not in runs[False].stdout
 
 
+def _ci_guard(root: Path) -> None:
+    """The suite's own CI skip guard in `root`: `tests/conftest.py` + the tracker reader it
+    imports."""
+    for name in ("conftest.py", "trackers.py"):
+        shutil.copy(_REPO_ROOT / "tests" / name, root / name)
+
+
 def test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite(tmp_path: Path) -> None:
-    """G18: under `CI=true` a pytest skip whose reason names no S8 tracker fails the session, also
-    through xdist (both suites run `-n auto`); a tracked skip and any skip outside CI pass.
-    Acceptance: the suite's own `tests/conftest.py` beside one skipping test -> rc 1 naming
-    `untracked skip under CI` serial and under `-n 2`; a `**M1.1**` reason under CI -> rc 0; the
-    untracked skip outside CI -> rc 0."""
-    shutil.copy(_REPO_ROOT / "tests" / "conftest.py", tmp_path / "conftest.py")
+    """G18: under `CI=true` a pytest skip whose reason names no LIVE S8 tracker fails the session,
+    also through xdist (both suites run `-n auto`); a tracked skip and any skip outside CI pass.
+    Acceptance: the suite's own guard beside one skipping test, under a spec whose `Tasks` holds
+    `**M1.1**` open + `**M1.2**` ticked -> rc 1 naming `untracked skip under CI` serial and under
+    `-n 2`; a `**M1.1**` or queue reason under CI -> rc 0; a `**M1.2**` (closed) or `**M1.3**`
+    (absent) reason under CI -> rc 1, since a spelling alone names nothing that re-enables the
+    case; the untracked skip outside CI -> rc 0."""
+    _ci_guard(tmp_path)
+    (tmp_path / ".agent").mkdir()
+    (tmp_path / ".agent" / "spec.md").write_text(
+        "## Tasks\n\n- [ ] **M1.1** open unit\n- [x] abcdef0 **M1.2** closed unit\n\n## Phase\n",
+        encoding="utf-8",
+    )
 
     def run(reason: str, *options: str, ci: bool) -> subprocess.CompletedProcess[str]:
         (tmp_path / "test_planted.py").write_text(
             f"import pytest\n\n\ndef test_planted() -> None:\n    pytest.skip({reason!r})\n",
             encoding="utf-8",
         )
+        argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
         return subprocess.run(  # noqa: S603 - fixed argv
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *options],
+            [*argv, f"--rootdir={tmp_path}", *options],
             cwd=tmp_path,
             env=_ci_env(ci=ci),
             capture_output=True,
@@ -463,18 +478,24 @@ def test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite(tmp_path: Path) -
         assert failed.returncode == 1 and "untracked skip under CI" in failed.stdout, (
             f"an untracked skip under CI passed the suite {options}: {failed.stdout}"
         )
-    tracked = run("skeleton of **M1.1**", ci=True)
-    assert tracked.returncode == 0, tracked.stdout
+    for reason in ("skeleton of **M1.1**", "queued in .agent/deferred.md"):
+        tracked = run(reason, ci=True)
+        assert tracked.returncode == 0, tracked.stdout
+    for reason in ("skeleton of **M1.2**", "skeleton of **M1.3**"):
+        stale = run(reason, ci=True)
+        assert stale.returncode == 1 and "untracked skip under CI" in stale.stdout, (
+            f"a skip naming no open Tasks unit passed under CI ({reason}): {stale.stdout}"
+        )
     outside = run("dependency absent", ci=False)
     assert outside.returncode == 0, outside.stdout
 
 
 def test_g18_a_collection_time_skip_under_ci_fails_the_suite(tmp_path: Path) -> None:
     """G18: a module-level `pytest.importorskip` skips at collection, where no test report names it
-    (reviewer-1 F2). Acceptance: the suite's own `tests/conftest.py` beside one passing module and
+    (reviewer-1 F2). Acceptance: the suite's own guard beside one passing module and
     one importing an absent dependency -> rc 1 naming `untracked skip under CI` serial and under
     `-n 2`; outside CI -> rc 0."""
-    shutil.copy(_REPO_ROOT / "tests" / "conftest.py", tmp_path / "conftest.py")
+    _ci_guard(tmp_path)
     (tmp_path / "test_present.py").write_text("def test_present() -> None:\n    pass\n")
     (tmp_path / "test_absent.py").write_text(
         "import pytest\n\npytest.importorskip('a_dependency_no_host_installs')\n\n\n"

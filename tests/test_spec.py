@@ -38,6 +38,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
+from trackers import names_tracker, open_units
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _REPO_ROOT / ".agent" / "spec.md"
 _DEFERRED = _REPO_ROOT / ".agent" / "deferred.md"
@@ -100,17 +102,8 @@ _CONTRACT_CITATION = re.compile(
     r"\.agent/(?:archive/)?contracts/[A-Za-z0-9][A-Za-z0-9_.-]*\.md(?![A-Za-z0-9_/-])(?!\.[A-Za-z0-9])"
 )
 
-# S8's two tracker forms. A blocker inside an unfinished unit lives with that unit, so a spine id
-# counts; anything off-spine cites the queue. Spine ids are read in the `**M13.6**` form on an OPEN
-# `- [ ]` row of `Tasks` alone: a unit named in passing prose -- `Carried forward from M13.4` --
-# never counts, and a unit stops counting once its row is ticked `- [x] <sha>`, a row the layout
-# keeps legal until its phase or MAINTAIN request closes.
-_SPINE_UNIT = re.compile(r"\*\*(M\d+(?:\.\d+)?[a-z]?)\*\*")
-_OPEN_ROW = re.compile(r"^- \[ \] (.*)$", re.MULTILINE)
 # A top-level Tasks row is open (`- [ ] `) or ticked with its commit (`- [x] <sha> `).
 _ROW = re.compile(r"- \[ \] |- \[x\] [0-9a-f]{7,40} ")
-_UNIT_CITATION = re.compile(r"M\d+(?:\.\d+)?[a-z]?")
-_QUEUE = ".agent/deferred.md"
 
 # `skip` and `xfail` disable outright. `skipif` is a dependency guard -- the case runs wherever its
 # dependency exists and `tools/gate.sh` announces the stage that skipped -- so it is read only when
@@ -443,9 +436,7 @@ def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
     those surface."""
     # No non-empty guard: every row ticked `- [x] <sha>` is a legal layout until its phase or
     # MAINTAIN request closes, and an empty open set only narrows what counts as a tracker.
-    spine = frozenset(
-        unit for row in _OPEN_ROW.findall(_section("Tasks")) for unit in _SPINE_UNIT.findall(row)
-    )
+    spine = open_units(_SPEC.read_text(encoding="utf-8"))
     sources = sorted(
         name for name in _tracked() if name.startswith("tests/") and name.endswith(".py")
     )
@@ -454,8 +445,7 @@ def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
         f"{name}:{lineno}: {reason or '<no reason>'}"
         for name in sources
         for lineno, reason in _disabled_cases(_REPO_ROOT / name)
-        if _QUEUE not in reason
-        and not any(unit in spine for unit in _UNIT_CITATION.findall(reason))
+        if not names_tracker(reason, spine)
     ]
     assert not untracked, f"untracked disabled cases: {untracked}"
 
