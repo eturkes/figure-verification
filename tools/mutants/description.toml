@@ -101,3 +101,17 @@ predicate = "a hidden colorbar keys no colour"
 kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-colorbar]"
 anchor = '''        return self.colorbar_of if self.visible else None'''
 mutant = '''        return self.colorbar_of'''
+
+[[mutant]]
+id = "cr-r271-call-slots-open"
+predicate = "a call map's keys are the slots the reader records"
+kills = "tests/test_figure_description.py::test_cr_r271_a_call_slot_the_reader_never_writes_refuses[axes-unknown]"
+anchor = '''    return _choice(key, slots), _int(items[0]), _int(items[1])'''
+mutant = '''    return _str(key), _int(items[0]), _int(items[1])'''
+
+[[mutant]]
+id = "cr-r271-axis-slots-swapped"
+predicate = "an axis map holds the axis slots alone"
+kills = "tests/test_figure_description.py::test_cr_r271_a_call_slot_the_reader_never_writes_refuses[axis-holds-an-axes-slot]"
+anchor = '''        _calls(item["calls"], _AXIS_SLOTS),'''
+mutant = '''        _calls(item["calls"], _AXIS_SLOTS | _AXES_SLOTS),'''

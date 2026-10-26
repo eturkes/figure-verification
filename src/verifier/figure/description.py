@@ -24,6 +24,13 @@ _AXIS_KINDS: Final = frozenset({"numeric", "category", "date", "unknown"})
 _TRANSFORMS: Final = frozenset({"data", "axes", "xaxis", "yaxis", "figure", "other"})
 _ORIENTATIONS: Final = frozenset({"vertical", "horizontal"})
 _ELEMENT_PROPS: Final = frozenset({"sizes", "colors"})
+# The call slots `reader.py` records: on an axes (`_AXES_CALLS`), on an axis (`_AXIS_CALLS` + the
+# tick style the pyplot + `tick_params` hooks record).
+_AXES_SLOTS: Final = frozenset(
+    {"xlim", "ylim", "xscale", "yscale", "xinvert", "yinvert", "xticks", "yticks", "twin"}
+    | {"inset", "legend"}
+)
+_AXIS_SLOTS: Final = frozenset({"ticks", "invert", "style"})
 
 Color: TypeAlias = tuple[float, float, float, float]
 Pair: TypeAlias = tuple[float, float]
@@ -359,17 +366,18 @@ def _titles(value: object) -> tuple[Text | None, Text | None, Text | None]:
     return first, second, third
 
 
-def _call(key: str, value: object) -> tuple[str, int, int]:
+def _call(key: str, value: object, slots: frozenset[str]) -> tuple[str, int, int]:
     items = _list(value)
     if len(items) != 2:  # noqa: PLR2004 - (line, clock)
         raise _InvalidError
-    return _str(key), _int(items[0]), _int(items[1])
+    return _choice(key, slots), _int(items[0]), _int(items[1])
 
 
-def _calls(value: object) -> tuple[tuple[str, int, int], ...]:
+def _calls(value: object, slots: frozenset[str]) -> tuple[tuple[str, int, int], ...]:
+    """A call map, its keys from `slots` alone (the reader writes no other)."""
     if type(value) is not dict:
         raise _InvalidError
-    return tuple(_call(key, call) for key, call in value.items())
+    return tuple(_call(key, call, slots) for key, call in value.items())
 
 
 def call_line(calls: tuple[tuple[str, int, int], ...], slot: str) -> int | None:
@@ -679,7 +687,7 @@ def _axis(value: object) -> Axis:
         _tuple(item["minor"], _tick),
         _str(item["minor_formatter_module"]),
         _tuple(item["dates"], _date),
-        _calls(item["calls"]),
+        _calls(item["calls"], _AXIS_SLOTS),
     )
 
 
@@ -730,7 +738,7 @@ def _axes(value: object) -> Axes:
         _titles(item["titles"]),
         _axis(item["x"]),
         _axis(item["y"]),
-        _calls(item["calls"]),
+        _calls(item["calls"], _AXES_SLOTS),
         _tuple(item["artists"], _artist),
         _tuple(item["containers"], _container),
         _tuple(item["pies"], _pie),

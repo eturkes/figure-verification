@@ -244,3 +244,34 @@ def test_f10_closed_word_fields_refuse_other_words(field: str) -> None:
     else:
         raw["figures"][0]["axes"][0]["containers"][0]["orientation"] = "diagonal"
     assert _parse(raw) is None
+
+
+@pytest.mark.parametrize(
+    ("where", "slot"),
+    [("axes", "not_a_reader_slot"), ("x", "not_a_reader_slot"), ("y", "xlim"), ("axes", "ticks")],
+    ids=["axes-unknown", "x-unknown", "axis-holds-an-axes-slot", "axes-holds-an-axis-slot"],
+)
+def test_cr_r271_a_call_slot_the_reader_never_writes_refuses(where: str, slot: str) -> None:
+    """R271 (code review): a call map's keys are closed like every other word field: an axes map
+    holds the axes slots, an axis map the axis slots (the decoder accepted any string)."""
+    raw = _raw("import matplotlib.pyplot as plt\nplt.plot([1, 2], [3, 4])\nplt.ylim(0, 5)\n")
+    assert _parse(raw) is not None
+    axes = raw["figures"][0]["axes"][0]
+    owner = axes if where == "axes" else axes[where]
+    owner["calls"][slot] = [3, 1]
+    assert _parse(raw) is None
+
+
+def test_cr_r271_the_decoder_admits_every_slot_the_reader_records() -> None:
+    """Every slot a reader hook records decodes (the two sets are written in two modules)."""
+    axes_slots = {"xlim", "ylim", "xscale", "yscale", "xinvert", "yinvert", "xticks", "yticks"}
+    assert set(reader._AXES_CALLS.values()) == axes_slots | {"twin", "inset", "legend"}
+    assert {*reader._AXIS_CALLS.values(), reader._STYLE} == {"ticks", "invert", "style"}
+    for slot in sorted(axes_slots | {"twin", "inset", "legend"}):
+        raw = _raw("import matplotlib.pyplot as plt\nplt.plot([1, 2], [3, 4])\n")
+        raw["figures"][0]["axes"][0]["calls"][slot] = [2, 1]
+        assert _parse(raw) is not None, slot
+    for slot in ("ticks", "invert", "style"):
+        raw = _raw("import matplotlib.pyplot as plt\nplt.plot([1, 2], [3, 4])\n")
+        raw["figures"][0]["axes"][0]["x"]["calls"][slot] = [2, 1]
+        assert _parse(raw) is not None, slot
