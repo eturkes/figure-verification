@@ -268,8 +268,8 @@ mutant = '''    return Evidence(program, site)'''
 id = "m20-evidence-failing-check"
 predicate = "the failure's line joins its own row (M20.2 E5)"
 kills = "tests/test_paste_in_outlet.py::test_m20_2_a_raising_program_lists_the_raising_statement"
-anchor = '''        lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)'''
-mutant = '''        lines = excerpts(program, description, None, site)'''
+anchor = '''    lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)'''
+mutant = '''    lines = excerpts(program, description, None, site)'''
 
 [[mutant]]
 id = "m20-evidence-unguarded"
@@ -284,8 +284,8 @@ mutant = '''    except ZeroDivisionError:
 id = "m20-evidence-description"
 predicate = "the parsed description reaches the line finder (M20.2 E5)"
 kills = "tests/test_paste_in_outlet.py::test_m20_2_a_passed_reply_lists_each_row_s_related_lines"
-anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, None, None)'''
-mutant = '''            evidence = await asyncio.to_thread(_evidence, program, None, None, None)'''
+anchor = '''            evidence = await _listing(program, description, None, None)'''
+mutant = '''            evidence = await _listing(program, None, None, None)'''
 
 [[mutant]]
 id = "q44-whole-font-sent"
@@ -358,14 +358,14 @@ mutant = '''            uri = _png_uri(stdout)'''
 id = "m22-failure-listing-on-loop"
 predicate = "a failure's program listing runs off the event loop (M22.1 F5)"
 kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[block]"
-anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, reason, site)'''
-mutant = '''            evidence = _evidence(program, description, reason, site)'''
+anchor = '''        return await asyncio.to_thread(_evidence, program, description, reason, site)'''
+mutant = '''        return _evidence(program, description, reason, site)'''
 
 [[mutant]]
 id = "m22-pass-listing-on-loop"
 predicate = "a pass's program listing runs off the event loop (M22.1 F5)"
 kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[pass]"
-anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, None, None)'''
+anchor = '''            evidence = await _listing(program, description, None, None)'''
 mutant = '''            evidence = _evidence(program, description, None, None)'''
 
 [[mutant]]
@@ -455,3 +455,42 @@ predicate = "a user message that is no dict reads as English, never a raise"
 kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[message-str]"
 anchor = '''    return is_japanese(message.get("content") if isinstance(message, dict) else None)'''
 mutant = '''    return is_japanese(message.get("content") if message is not None else None)'''
+
+[[mutant]]
+id = "cr-r262-publish-first"
+predicate = "the image goes out only once every part of the pass is built"
+kills = "tests/test_paste_in_note.py::test_cr_r262_a_fault_building_the_pass_publishes_no_image"
+anchor = '''
+            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
+            evidence = await _listing(program, description, None, None)
+            try:
+                await __event_emitter__(
+                    {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+                )
+            except Exception:
+                return await fail("publish_failed")
+'''
+mutant = '''
+            try:
+                await __event_emitter__(
+                    {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+                )
+            except Exception:
+                return await fail("publish_failed")
+            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
+            evidence = await _listing(program, description, None, None)
+'''
+
+[[mutant]]
+id = "cr-r262-listing-unguarded"
+predicate = "a fault reaching the listing worker leaves the bare program, never an escaping exception"
+kills = "tests/test_paste_in_note.py::test_cr_r262_a_listing_fault_never_costs_the_verdict[block]"
+anchor = '''
+    try:
+        return await asyncio.to_thread(_evidence, program, description, reason, site)
+    except Exception:
+        return Evidence(program, site)
+'''
+mutant = '''
+    return await asyncio.to_thread(_evidence, program, description, reason, site)
+'''

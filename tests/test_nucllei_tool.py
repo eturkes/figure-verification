@@ -723,6 +723,25 @@ def test_q82_t15_the_note_is_shown_on_a_pass_alone_and_read_by_nothing(
         )
 
 
+def test_cr_r281_a_fault_rendering_the_note_is_a_failed_publication(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R281 (code review): a pass never shows without the note the model gave, so a fault in the
+    note's renderer is a failed publication, not a pass with the note dropped."""
+    world.program = HONEST
+    _sales_chat(world)
+
+    def broken(_text: str) -> str:
+        message = "PRIVATE_FAULT"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr("webui.paste_in.reply.prose", broken)
+    invoke(world, note="You asked for an axis from 80; the chart starts at zero.")
+    assert _shown(world).startswith(FAIL_EN)
+    assert "(publish_failed)" in _shown(world)
+    assert world.marks == ["fatal"]
+
+
 def test_q82_t15_the_switch_off_hides_the_note(world: World) -> None:
     world.program = HONEST
     _sales_chat(world)

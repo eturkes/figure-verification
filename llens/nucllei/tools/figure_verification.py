@@ -3732,14 +3732,11 @@ def note_line(note: str, *, japanese: bool) -> str:
     """The model's own statement of what the chart rules overrode, after its bold label as escaped
     plain text (Q79: both hosts render the reply as markdown), or nothing for a blank note.
 
-    Display alone: it is built after the verdict and read by no check. Total, because a failed
-    reply builds it, and a raise there would fail open.
+    Display alone: read by no check, and built before the pass is published, so a fault here
+    reaches the host's failure path (a pass never shows without the note the model gave).
     """
-    try:
-        shown = note.strip()
-        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""
-    except Exception:
-        return ""
+    shown = note.strip()
+    return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""
 '''
 
 _SOURCES["nucllei_skill.reasons"] = r'''

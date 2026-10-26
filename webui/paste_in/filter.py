@@ -216,14 +216,23 @@ def _evidence(
     program: str | None, description: Description | None, reason: Reason | None, site: int | None
 ) -> Evidence:
     """The program, the line a failure points at and each check's related lines, for display
-    alone: a fault while finding the lines leaves the program and the line, never the verdict."""
+    alone (`_listing` runs it: a fault leaves the program and the line, never the verdict)."""
     if program is None:
         return Evidence(None, site)
+    lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)
+    return Evidence(program, site, lines)
+
+
+async def _listing(
+    program: str | None, description: Description | None, reason: Reason | None, site: int | None
+) -> Evidence:
+    """`_evidence` off the event loop (its syntax walk took 0.26 s near the work budget, CPython
+    3.11, M22.1 F5). A fault reaching the worker leaves the program and the line, as one inside it
+    does: the catch-all's own block runs this, so nothing here may escape."""
     try:
-        lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)
+        return await asyncio.to_thread(_evidence, program, description, reason, site)
     except Exception:
         return Evidence(program, site)
-    return Evidence(program, site, lines)
 
 
 async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
@@ -335,9 +344,7 @@ class Filter:
         note = ""
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
-            # The listing walks the program's syntax tree: 0.26 s near its work budget (CPython
-            # 3.11, M22.1 F5).
-            evidence = await asyncio.to_thread(_evidence, program, description, reason, site)
+            evidence = await _listing(program, description, reason, site)
             return await _fail(
                 body,
                 reason,
@@ -412,18 +419,20 @@ class Filter:
             uri = await asyncio.to_thread(_png_uri, stdout)
             if uri is None:
                 return await fail("no_image")
+            # Every part of the pass is built before the image goes out: a fault building one
+            # fails closed while nothing is published (an image beside a block otherwise).
+            japanese = _japanese(__metadata__)
+            interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
+            # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
+            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
+            evidence = await _listing(program, description, None, None)
             try:
                 await __event_emitter__(
                     {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
                 )
             except Exception:
                 return await fail("publish_failed")
-            evidence = await asyncio.to_thread(_evidence, program, description, None, None)
             await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
-            japanese = _japanese(__metadata__)
-            interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
-            # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
-            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
             return _rewrite(body, f"{PASS_TEXTS[japanese]}\n\n{interpretation}{note_line}")
         except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass

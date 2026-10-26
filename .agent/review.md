@@ -160,7 +160,7 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R259 | M23.1 | L-SEC | F3 (low): the live nucllei harness served its private stack on every interface with signup on, and kept its admin login at the umask. | closed | `62c2838`: loopback serve + `ENABLE_SIGNUP=false` + `stack.json` 0600; `tests/test_measurement_exposure.py`; CodeQL alert 2 = the user's. |
 | R260 | M23.1 | L-SEC | F4 (informational): the model backend + stub share F2's request-origin class with no credential behind them. | register | Queued in `.agent/deferred.md`. |
 | R261 | M23.1 | L-SEC | Register U1 + U2 (upstream, outside the contract): the nucllei sandbox's `/exec` imports write follows links; nucllei's frontend lock pins markdown-it 14.3.0 (quadratic-parse advisories). | register | Reported to the user; no repo action (the tool sends no `imports`; its own text cannot reach the inline-HTML parse, NR). |
-| R262 | CR | L-CORR | rev6 F1 (minor, publish-before-finalize): accept (internal-fault path only: note thread submit / rewrite after `files` emit ⇒ FAIL text beside a published PNG; nucllei's publish already builds first) | accepted | red rerun rc1 (test_1) |
+| R262 | CR | L-CORR | rev6 F1 (minor, publish-before-finalize): accept (internal-fault path only: note thread submit / rewrite after `files` emit ⇒ FAIL text beside a published PNG; nucllei's publish already builds first) | closed | fix-1 (`webui/paste_in/filter.py`: the pass is built whole before its `files` event; the block path's listing falls back to the bare program): `tests/test_paste_in_note.py::test_cr_r262_a_fault_building_the_pass_publishes_no_image` (2 cases, red on 07f04e3); mutants `cr-r262-publish-first`, `cr-r262-fail-listing-unguarded` (filter 59/59) |
 | R263 | CR | L-HARD | rev6 F2 (minor, test-infra fidelity): accept | accepted | red rerun rc1 (test_2) |
 | R264 | CR | L-CLAIM | rev6 F3 (minor, stale claim): accept: sandbox.py:5 `which raises before the program runs (A5)` = 0.10.2 behaviour | accepted | anchor (rev6) |
 | R265 | CR | L-HARD | rev6 F4 (minor, test-infra fidelity): accept: fake `file_id=` vs real `id` | accepted | red rerun rc1 (test_4) |
@@ -179,7 +179,7 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R278 | CR | L-CLAIM | rev4 F3 (minor, stale claim): accept: csvread.py:32 + table.py:9 NA spellings "refuse" (keys kept as text) | accepted | anchor rc0 |
 | R279 | CR | L-CLAIM | rev4 F4 (minor, stale claim): accept: limits.py:18 `before its groups exist` | accepted | anchor rc0 |
 | R280 | CR | L-CLAIM | rev4 register (minor, stale claim): accept: retired static-path vocabulary in anchoring.py:12, aggregate.py:7, test_pysrc_anchoring.py:202,215, test_pysrc_labels.py:4-6 | accepted | anchor pending |
-| R281 | CR | L-CORR | rev5 F1 (minor, publish-before-finalize): accept: note_line swallows a renderer fault ⇒ pass without the model's note (Intent: pass shows the note); stale "a failed reply builds it" | accepted | red rerun rc1 (r5 test_1) |
+| R281 | CR | L-CORR | rev5 F1 (minor, publish-before-finalize): accept: note_line swallows a renderer fault ⇒ pass without the model's note (Intent: pass shows the note); stale "a failed reply builds it" | closed | fix-1 (`webui/paste_in/reply.py::note_line` raises; OWUI → `verifier_error`, nucllei → `publish_failed`): `test_cr_r281_a_fault_rendering_the_note_blocks_the_pass` + `tests/test_nucllei_tool.py::test_cr_r281_a_fault_rendering_the_note_is_a_failed_publication` (red on 07f04e3); mutant `cr-r281-note-renderer-total` (reply 14/14) |
 | R282 | CR | L-HARD | rev5 F2 (minor, co-derived oracle): accept: CHART_SENT expectation read from production (test_paste_in_tool.py:62,94,119; test_paste_in_aliases.py:161,167; test_paste_in_request_text.py:227) | accepted | red rerun rc1 (r5 test_2) |
 | R283 | CR | L-HARD | rev5 F3 (minor, dead check): accept: test_guidance_claim_boundary encodes the retired schema-admission claim (retire = gate change, record firing) | accepted | anchor rc0 |
 | R284 | CR | L-CLAIM | rev7 F1 (minor, overclaim (UI)): accept: checks.py:276-277 columns explanation (EN+JA, nucllei) claims every named column drawn + every summary word refused | accepted | anchor rc0 |
@@ -234,6 +234,15 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R333 | CR | L-CORR | rev9 F4 (minor, snapshot report): accept: a pinned file turned unreadable dir = mismatched AND unreadable (sets claimed disjoint) | accepted | red rerun rc1 (r9 test_4) |
 | R334 | CR | L-CORR | MAIN B10 (minor, generated artifact currency): accept: tests/fonts/NotoSansJP-subset.ttf lacks 55 characters its generator keeps today (`every other character in the tracked test inputs` claim false); no currency check | accepted | regen diff (B10) |
 | R335 | CR | L-CORR | MAIN B19 (minor, CLI argv): accept: `python -m model_backend --help` serves; render_gallery/render_diagrams `--help` regenerate; generate_paste_in `--help` rc 2 | accepted | run (B19) |
+| R336 | CR | L-CLAIM | rev11 F1 (minor, stale claim): accept: r_probe.py:2 `both pinned Pyodide builds` (one bundle) | accepted | anchor rc0 |
+| R337 | CR | L-CLAIM | rev11 F2 (minor, stale claim): accept: f7_wrapper.mjs:238 `every other plot none.` (5 glyph controls) | accepted | anchor rc0 |
+| R338 | CR | L-HARD | rev11 F3 (major, harness defect): accept: q78_summary.py:26,35 parses only the retired code-span note ⇒ a rerun reports every current note as silence | accepted | red rerun rc1 (r11 test_3) |
+| R339 | CR | L-HARD | rev11 F4 (major, harness defect): accept: luna_classify `_facts` treats an error + zero-figure reading as readable ⇒ distorted=false, never null | accepted | red rerun rc1 (r11 test_4) |
+| R340 | CR | L-HARD | rev11 F5 (major, harness defect): accept: m16u1_checks focusWalk never requires the opened row's link in the Tab walk | accepted | red rerun rc1 (r11 test_5) |
+| R341 | CR | L-CLAIM | rev11 F6 (minor, stale claim): accept: q79_render.mjs:9 label rule omits the JA KaTeX kind | accepted | anchor rc0 |
+| R342 | CR | L-CLAIM | rev11 F7 (minor, stale claim): accept: nucllei_live.py:14 `the published PNGs` (references only) | accepted | anchor rc0 |
+| R343 | CR | L-HARD | rev11 F8 (major, harness defect): accept: q46_mx150.sh exits 0 after readiness + every probe fails | accepted | red rerun rc1 (r11 test_8, stubbed exact copy) |
+| R344 | CR | L-CORR | rev11 Rg1 (minor, dead code): accept: all_results.py:12 unused `FUNCTIONS`; versions.mjs unused imports | accepted | read |
 
 ## Code review — check set (MAINTAIN code-review request)
 
@@ -258,18 +267,18 @@ Groups: G1 reader · G2 judge structure + corpus · G3 values · G4 anchoring + 
 | id | `Artifacts` entry | run | verdict | evidence |
 |---|---|---|---|---|
 | B1 | Gate | `bash tools/gate.sh` — CI fan-out on the check-set commit | pass | CI run 40275306471 (`ci/code-review` @ 07f04e3): 10/10 stage jobs rc 0 — format 0.2 · lint 0.2 · types 14.1 · tests 67.0 (2855 passed) · tests311 90.8 (2855 passed) · audit 3.4 · secrets 35.9 · workflows 0.3 · spec 0.0 · shell 0.8 s; `skipped:` none; pytest SKIPPED 0 (control: 10 `not selected:` lines) |
-| B2 | Gate positive controls | `bash tools/gate-probe.sh` | pass | nixbox pool run on 07f04e3: `probe rc=0 178s` |
+| B2 | Gate positive controls | `bash tools/gate-probe.sh` | pass | nixbox pool run on 07f04e3: `probe rc=0 178s`, `fired: 60`, every target restored |
 | B3 | Fast gate | `bash tools/fast-gate.sh <node>` | pass | `bash tools/fast-gate.sh tests/test_figure_inert.py` rc 0 17.2 s (27 passed; skipped: tests311 audit secrets coverage, as designed) |
-| B4 | Mutation-tool credit | `uv run --locked python tools/mutation_credit.py <tests/…::node>` (one node) | pending | — |
-| B5 | Mutation catalogues | `uv run --locked python tools/mutate.py tools/mutants/<module>.toml`, all 39 | pending | — |
+| B4 | Mutation-tool credit | `uv run --locked python tools/mutation_credit.py <tests/…::node>` (one node) | pass | nixbox, node `tests/test_paste_in_owui_files.py::test_u2_d1_the_admins_font_file_wins_and_skips_the_walk`: scope 3 files, killed 35, survived 178, abnormal 0, rc 1 = complete with survivors (a drive of the tool, not a credit claim; the same unchanged scope read 43/170 in the upgrade drive: kills of this node vary by host) |
+| B5 | Mutation catalogues | `uv run --locked python tools/mutate.py tools/mutants/<module>.toml`, all 39 | pass | nixbox pool run on 07f04e3: all 39 catalogues rc 0, 775/775 killed (anchoring 277 s, sfnt 284 s, explain 263 s, reader 233 s the slowest) |
 | B6 | Paste-in + nucllei generation | `uv run --locked python tools/generate_paste_in.py --check` (`paste-in/`, `webui/demo-paste-in/`, `llens/nucllei/`) | pass | `6 artifact(s) current` rc 0 |
 | B7 | nucllei guide HTML | `uv run --locked python tools/render_nucllei_guide.py --check` | pass | `--check` rc 0 |
 | B8 | Diagrams | `uv run --locked python tools/render_diagrams.py` → committed SVG bytes | pass | re-render in a clean worktree @ 07f04e3: 4 SVGs written, `git status --porcelain` empty |
 | B9 | Gallery | `uv run --locked python tools/render_gallery.py` → committed pages + PNGs | pass | re-render in the same worktree: 57 images + 2 pages written, porcelain empty |
 | B10 | Test fonts | `uv run --locked python tools/subset_test_font.py` (TTF + `--cff`) → committed bytes | R334 | TTF regen (Noto Sans JP 2.004-H2) keeps 779 characters vs 724 committed (55 tracked characters missing; shared 724 glyph outlines + advances identical); CFF regen byte-identical |
-| B11 | NS (nucllei sandbox corpus) | `uv run --locked python .agent/measurements/ns_sandbox.py` | pending | — |
+| B11 | NS (nucllei sandbox corpus) | `uv run --locked python .agent/measurements/ns_sandbox.py` | pass | replayed inside B13: `NS: PASS` |
 | B12 | nucllei live | `uv run --locked python .agent/measurements/nucllei_live.py <llens checkout> <out> [arm …]` | pending | — |
-| B13 | Measurement replay | `uv run --locked python .agent/measurements/rerun_all.py` | pending | — |
+| B13 | Measurement replay | `uv run --locked python .agent/measurements/rerun_all.py` | pass | `nice -n 19 ionice -c3 uv run --locked python .agent/measurements/rerun_all.py` on 07f04e3: 29/29 PASS (S6 … X1, Image; C1 + NS + M15/M16/M17 browser legs included), rc 0, 3428 s at host load 14-40 |
 | B14 | Demo stub | `webui/launch.sh --stub` + `node .agent/measurements/m10u3_demo.mjs …` per banner arm | pending | — |
 | B15 | Demo real model | `webui/launch.sh` (MX150) + one banner arm | pending | — |
 | B16 | Demo codex | `webui/launch.sh --codex` + one banner arm | pending | — |
@@ -454,60 +463,60 @@ Groups: G1 reader · G2 judge structure + corpus · G3 values · G4 anchoring + 
 | M171 | G10 | `.secrets.baseline` | pass | pass | pass | pass | n/a: secret disposition MAIN-only | pass |
 | M172 | G10 | `docs/gallery/entries.toml` | pass | pass | pass | pass | pass | pass |
 | M173 | G10 | `docs/gallery/cases.toml` | pass | pass | pass | pass | pass | pass |
-| M174 | G11 | `.agent/measurements/all_results.py` | pending | pending | pending | pending | pending | pending |
-| M175 | G11 | `.agent/measurements/c1_export.py` | pending | pending | pending | pending | pending | pending |
-| M176 | G11 | `.agent/measurements/c1_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M177 | G11 | `.agent/measurements/chain_demo.mjs` | pending | pending | pending | pending | pending | pending |
-| M178 | G11 | `.agent/measurements/check.py` | pending | pending | pending | pending | pending | pending |
-| M179 | G11 | `.agent/measurements/codex_context.py` | pending | pending | pending | pending | pending | pending |
-| M180 | G11 | `.agent/measurements/f7_export.py` | pending | pending | pending | pending | pending | pending |
-| M181 | G11 | `.agent/measurements/f7_wrapper.mjs` | pending | pending | pending | pending | pending | pending |
-| M182 | G11 | `.agent/measurements/i1_census.py` | pending | pending | pending | pending | pending | pending |
-| M183 | G11 | `.agent/measurements/i1_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M184 | G11 | `.agent/measurements/i2_ambiguity.py` | pending | pending | pending | pending | pending | pending |
-| M185 | G11 | `.agent/measurements/i3_export.py` | pending | pending | pending | pending | pending | pending |
-| M186 | G11 | `.agent/measurements/i3_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M187 | G11 | `.agent/measurements/image_import.py` | pending | pending | pending | pending | pending | pending |
-| M188 | G11 | `.agent/measurements/image_leg.py` | pending | pending | pending | pending | pending | pending |
-| M189 | G11 | `.agent/measurements/luna_classify.py` | pending | pending | pending | pending | pending | pending |
-| M190 | G11 | `.agent/measurements/luna_facts.py` | pending | pending | pending | pending | pending | pending |
-| M191 | G11 | `.agent/measurements/luna_live.mjs` | pending | pending | pending | pending | pending | pending |
-| M192 | G11 | `.agent/measurements/m10u3_demo.mjs` | pending | pending | pending | pending | pending | pending |
-| M193 | G11 | `.agent/measurements/m10u3_readback.mjs` | pending | pending | pending | pending | pending | pending |
-| M194 | G11 | `.agent/measurements/m15u1_status.mjs` | pending | pending | pending | pending | pending | pending |
-| M195 | G11 | `.agent/measurements/m16u1_checks.mjs` | pending | pending | pending | pending | pending | pending |
-| M196 | G11 | `.agent/measurements/m16u1_dump.py` | pending | pending | pending | pending | pending | pending |
-| M197 | G11 | `.agent/measurements/make_r_inputs.py` | pending | pending | pending | pending | pending | pending |
-| M198 | G11 | `.agent/measurements/make_s6_csv.py` | pending | pending | pending | pending | pending | pending |
-| M199 | G11 | `.agent/measurements/make_t8_inputs.py` | pending | pending | pending | pending | pending | pending |
-| M200 | G11 | `.agent/measurements/ns_sandbox.py` | pending | pending | pending | pending | pending | pending |
-| M201 | G11 | `.agent/measurements/nucllei_live.py` | pending | pending | pending | pending | pending | pending |
-| M202 | G11 | `.agent/measurements/nucllei_render.mjs` | pending | pending | pending | pending | pending | pending |
-| M203 | G11 | `.agent/measurements/nucllei_render_corpus.py` | pending | pending | pending | pending | pending | pending |
-| M204 | G11 | `.agent/measurements/o8_bundle.mjs` | pending | pending | pending | pending | pending | pending |
-| M205 | G11 | `.agent/measurements/q46_mx150.sh` | pending | pending | pending | pending | pending | pending |
-| M206 | G11 | `.agent/measurements/q78_summary.py` | pending | pending | pending | pending | pending | pending |
-| M207 | G11 | `.agent/measurements/q79_corpus.py` | pending | pending | pending | pending | pending | pending |
-| M208 | G11 | `.agent/measurements/q79_render.mjs` | pending | pending | pending | pending | pending | pending |
-| M209 | G11 | `.agent/measurements/r_compare.py` | pending | pending | pending | pending | pending | pending |
-| M210 | G11 | `.agent/measurements/r_probe.py` | pending | pending | pending | pending | pending | pending |
-| M211 | G11 | `.agent/measurements/r_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M212 | G11 | `.agent/measurements/r_results.py` | pending | pending | pending | pending | pending | pending |
-| M213 | G11 | `.agent/measurements/r_run.sh` | pending | pending | pending | pending | pending | pending |
-| M214 | G11 | `.agent/measurements/r_supplement.py` | pending | pending | pending | pending | pending | pending |
-| M215 | G11 | `.agent/measurements/rerun_all.py` | pending | pending | pending | pending | pending | pending |
-| M216 | G11 | `.agent/measurements/s6_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M217 | G11 | `.agent/measurements/t3.py` | pending | pending | pending | pending | pending | pending |
-| M218 | G11 | `.agent/measurements/t4.py` | pending | pending | pending | pending | pending | pending |
-| M219 | G11 | `.agent/measurements/t5.py` | pending | pending | pending | pending | pending | pending |
-| M220 | G11 | `.agent/measurements/t6_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M221 | G11 | `.agent/measurements/t7_profile.py` | pending | pending | pending | pending | pending | pending |
-| M222 | G11 | `.agent/measurements/t7_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M223 | G11 | `.agent/measurements/t7_quoted.py` | pending | pending | pending | pending | pending | pending |
-| M224 | G11 | `.agent/measurements/t8_profile.py` | pending | pending | pending | pending | pending | pending |
-| M225 | G11 | `.agent/measurements/t8_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
-| M226 | G11 | `.agent/measurements/versions.mjs` | pending | pending | pending | pending | pending | pending |
-| M227 | G11 | `.agent/measurements/x1_transforms.py` | pending | pending | pending | pending | pending | pending |
+| M174 | G11 | `.agent/measurements/all_results.py` | pass | R344 | pass | pass | pass | pass |
+| M175 | G11 | `.agent/measurements/c1_export.py` | pass | pass | pass | pass | pass | pass |
+| M176 | G11 | `.agent/measurements/c1_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M177 | G11 | `.agent/measurements/chain_demo.mjs` | pass | pass | pass | pass | pass | pass |
+| M178 | G11 | `.agent/measurements/check.py` | pass | pass | pass | pass | pass | pass |
+| M179 | G11 | `.agent/measurements/codex_context.py` | pass | pass | pass | pass | pass | pass |
+| M180 | G11 | `.agent/measurements/f7_export.py` | pass | pass | pass | pass | pass | pass |
+| M181 | G11 | `.agent/measurements/f7_wrapper.mjs` | pass | pass | pass | R337 | pass | pass |
+| M182 | G11 | `.agent/measurements/i1_census.py` | pass | pass | pass | pass | pass | pass |
+| M183 | G11 | `.agent/measurements/i1_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M184 | G11 | `.agent/measurements/i2_ambiguity.py` | pass | pass | pass | pass | pass | pass |
+| M185 | G11 | `.agent/measurements/i3_export.py` | pass | pass | pass | pass | pass | pass |
+| M186 | G11 | `.agent/measurements/i3_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M187 | G11 | `.agent/measurements/image_import.py` | pass | pass | pass | pass | pass | pass |
+| M188 | G11 | `.agent/measurements/image_leg.py` | pass | pass | pass | pass | pass | pass |
+| M189 | G11 | `.agent/measurements/luna_classify.py` | R339 | pass | pass | R339 | pass | R339 |
+| M190 | G11 | `.agent/measurements/luna_facts.py` | pass | pass | pass | pass | pass | pass |
+| M191 | G11 | `.agent/measurements/luna_live.mjs` | pass | pass | pass | pass | pass | pass |
+| M192 | G11 | `.agent/measurements/m10u3_demo.mjs` | pass | pass | pass | pass | pass | pass |
+| M193 | G11 | `.agent/measurements/m10u3_readback.mjs` | pass | pass | pass | pass | pass | pass |
+| M194 | G11 | `.agent/measurements/m15u1_status.mjs` | pass | pass | pass | pass | pass | pass |
+| M195 | G11 | `.agent/measurements/m16u1_checks.mjs` | R340 | pass | pass | R340 | R340 | pass |
+| M196 | G11 | `.agent/measurements/m16u1_dump.py` | pass | pass | pass | pass | pass | pass |
+| M197 | G11 | `.agent/measurements/make_r_inputs.py` | pass | pass | pass | pass | pass | pass |
+| M198 | G11 | `.agent/measurements/make_s6_csv.py` | pass | pass | pass | pass | pass | pass |
+| M199 | G11 | `.agent/measurements/make_t8_inputs.py` | pass | pass | pass | pass | pass | pass |
+| M200 | G11 | `.agent/measurements/ns_sandbox.py` | pass | pass | pass | pass | pass | pass |
+| M201 | G11 | `.agent/measurements/nucllei_live.py` | pass | pass | pass | R342 | pass | pass |
+| M202 | G11 | `.agent/measurements/nucllei_render.mjs` | pass | pass | pass | pass | pass | pass |
+| M203 | G11 | `.agent/measurements/nucllei_render_corpus.py` | pass | pass | pass | pass | pass | pass |
+| M204 | G11 | `.agent/measurements/o8_bundle.mjs` | pass | pass | pass | pass | pass | pass |
+| M205 | G11 | `.agent/measurements/q46_mx150.sh` | R343 | pass | pass | pass | R343 | pass |
+| M206 | G11 | `.agent/measurements/q78_summary.py` | R338 | pass | pass | R338 | pass | pass |
+| M207 | G11 | `.agent/measurements/q79_corpus.py` | pass | pass | pass | pass | pass | pass |
+| M208 | G11 | `.agent/measurements/q79_render.mjs` | pass | pass | pass | R341 | pass | pass |
+| M209 | G11 | `.agent/measurements/r_compare.py` | pass | pass | pass | pass | pass | pass |
+| M210 | G11 | `.agent/measurements/r_probe.py` | pass | pass | pass | R336 | pass | pass |
+| M211 | G11 | `.agent/measurements/r_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M212 | G11 | `.agent/measurements/r_results.py` | pass | pass | pass | pass | pass | pass |
+| M213 | G11 | `.agent/measurements/r_run.sh` | pass | pass | pass | pass | pass | pass |
+| M214 | G11 | `.agent/measurements/r_supplement.py` | pass | pass | pass | pass | pass | pass |
+| M215 | G11 | `.agent/measurements/rerun_all.py` | pass | pass | pass | pass | pass | pass |
+| M216 | G11 | `.agent/measurements/s6_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M217 | G11 | `.agent/measurements/t3.py` | pass | pass | pass | pass | pass | pass |
+| M218 | G11 | `.agent/measurements/t4.py` | pass | pass | pass | pass | pass | pass |
+| M219 | G11 | `.agent/measurements/t5.py` | pass | pass | pass | pass | pass | pass |
+| M220 | G11 | `.agent/measurements/t6_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M221 | G11 | `.agent/measurements/t7_profile.py` | pass | pass | pass | pass | pass | pass |
+| M222 | G11 | `.agent/measurements/t7_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M223 | G11 | `.agent/measurements/t7_quoted.py` | pass | pass | pass | pass | pass | pass |
+| M224 | G11 | `.agent/measurements/t8_profile.py` | pass | pass | pass | pass | pass | pass |
+| M225 | G11 | `.agent/measurements/t8_pyodide.mjs` | pass | pass | pass | pass | pass | pass |
+| M226 | G11 | `.agent/measurements/versions.mjs` | pass | R344 | pass | pass | pass | pass |
+| M227 | G11 | `.agent/measurements/x1_transforms.py` | pass | pass | pass | pass | pass | pass |
 
 Generated artifacts (`paste-in/*`, `webui/demo-paste-in/*`, `llens/nucllei/**`, `llens/ext/public/**`, `docs/diagrams/*.svg`, `docs/gallery/*.png`) = B6-B9 + their source rows; `LICENSE` + `src/verifier/py.typed` = no lens applies.
 

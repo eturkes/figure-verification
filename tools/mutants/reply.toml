@@ -53,8 +53,8 @@ mutant = '''        or False'''
 id = "q78-blank-note-shown"
 predicate = "a blank note adds nothing"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_blank_note_adds_nothing"
-anchor = '''        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""'''
-mutant = '''        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}"'''
+anchor = '''    return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""'''
+mutant = '''    return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}"'''
 
 [[mutant]]
 id = "q78-label-not-localized"
@@ -81,8 +81,8 @@ mutant = '''NOTE_LABELS: Final = ("Model note:",'''
 id = "q78-note-not-stripped"
 predicate = "the shown note is stripped"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
-anchor = '''        shown = note.strip()'''
-mutant = '''        shown = note'''
+anchor = '''    shown = note.strip()'''
+mutant = '''    shown = note'''
 
 [[mutant]]
 id = "q80-ja-label-strong"
@@ -97,3 +97,19 @@ predicate = "content that is no string reads as English, never a raise"
 kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[content-list]"
 anchor = '''    return isinstance(text, str) and KANA_LETTER.search(text) is not None'''
 mutant = '''    return text is not None and KANA_LETTER.search(text) is not None'''
+
+[[mutant]]
+id = "cr-r281-note-renderer-total"
+predicate = "a fault rendering the note reaches the host's failure path, never a silently dropped note"
+kills = "tests/test_paste_in_note.py::test_cr_r281_a_fault_rendering_the_note_blocks_the_pass"
+anchor = '''
+    shown = note.strip()
+    return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""
+'''
+mutant = '''
+    try:
+        shown = note.strip()
+        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""
+    except Exception:
+        return ""
+'''

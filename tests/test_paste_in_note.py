@@ -333,6 +333,74 @@ def test_q78_n4_a_fault_rendering_the_note_never_fails_open(
     assert calls == []
 
 
+def _failing(api: Any, step: str) -> Any:
+    """`asyncio.to_thread` that raises before it runs `step`, and runs everything else."""
+    original = api.asyncio.to_thread
+
+    async def to_thread(function: Any, /, *args: Any, **kwargs: Any) -> Any:
+        if getattr(function, "__name__", "") == step:
+            message = "PRIVATE_FAULT"
+            raise RuntimeError(message)
+        return await original(function, *args, **kwargs)
+
+    return to_thread
+
+
+def test_cr_r262_a_fault_building_the_pass_publishes_no_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R262 (code review): every part of a passing reply is built before its image goes out, so a
+    fault building one blocks with `verifier_error` and no `files` event (built after the image, a
+    fault left the image beside the block)."""
+    api = load("filter")
+    monkeypatch.setattr(api.asyncio, "to_thread", _failing(api, "_note_line"))
+    result, browser = _outlet(SIMPLE, _NOTE)
+    assert _reply(result) == FAIL
+    assert [event["type"] for event in browser.events] == ["status", "embeds"]
+    status = cast(dict[str, str], browser.events[0]["data"])
+    assert status["description"].endswith("(verifier_error)")
+
+
+@pytest.mark.parametrize(
+    ("program", "expected", "events"),
+    [
+        (SIMPLE, PASS, ["files", "embeds"]),
+        (TRUNCATED, FAIL, ["status", "embeds"]),
+    ],
+    ids=["pass", "block"],
+)
+def test_cr_r262_a_listing_fault_never_costs_the_verdict(
+    monkeypatch: pytest.MonkeyPatch, program: str, expected: str, events: list[str]
+) -> None:
+    """R262 (code review): a fault reaching the worker that finds a check's program lines leaves
+    the bare program in the embed and the verdict untouched (`.claude/rules/owui.md`); it escaped
+    the block path's own listing, so the outlet raised and Open WebUI kept the model's reply."""
+    api = load("filter")
+    monkeypatch.setattr(api.asyncio, "to_thread", _failing(api, "_evidence"))
+    result, browser = _outlet(program, _NOTE)
+    assert _reply(result).startswith(expected)
+    assert [event["type"] for event in browser.events] == events
+
+
+def test_cr_r281_a_fault_rendering_the_note_blocks_the_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R281 (code review): a passing chart never shows without the note the model gave (`Intent`),
+    so a fault in the note's renderer blocks it (`verifier_error`) instead of dropping the note."""
+    calls: list[str] = []
+
+    def broken(text: str) -> str:
+        calls.append(text)
+        message = "PRIVATE_FAULT"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(load("reply"), "prose", broken)
+    result, browser = _outlet(SIMPLE, _NOTE)
+    assert calls == [_NOTE]
+    assert _reply(result) == FAIL
+    assert "files" not in [event["type"] for event in browser.events]
+
+
 def _only_note(original: Any, broken: Any) -> Any:
     async def to_thread(function: Any, /, *args: Any, **kwargs: Any) -> Any:
         if getattr(function, "__name__", "") == "_note_line":
