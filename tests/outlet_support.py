@@ -148,6 +148,10 @@ TRUNCATED = SALES.replace("plt.show()", "plt.ylim(30000, 45000)\nplt.show()")
 SALES_BYTES = (REPO_ROOT / "data/sales.csv").read_bytes()
 
 
+# The tool's one reply, hand-stated: an oracle read from `verdicts.CHART_SENT` pins nothing (R282).
+CHART_SENT_TEXT = "The chart program was sent. The reply shows the chart if it passes the checks."
+
+
 def load(name: str) -> ModuleType:
     module = importlib.import_module("webui.paste_in." + name)
     assert Path(cast(str, module.__file__)).resolve().is_relative_to(REPO_ROOT)

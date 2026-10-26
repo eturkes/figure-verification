@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import pytest
 
-from outlet_support import load
+from outlet_support import CHART_SENT_TEXT, load
 from paste_in_support import StoredChat, fake_chats, filter_request
 from verifier.figure import reader
 from verifier.figure.description import parse_description
@@ -224,7 +224,7 @@ def test_q66_r5_the_receipt_carries_the_thread_under_the_requesting_user(
     )
     receipt = load("receipt").read_receipt(request)
     assert receipt == load("receipt").Receipt("program", (), expected, ())
-    assert result == load("verdicts").CHART_SENT
+    assert result == CHART_SENT_TEXT
 
 
 _ORDERS_BY_REGION = f"""

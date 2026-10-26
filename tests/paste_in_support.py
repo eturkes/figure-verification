@@ -56,6 +56,9 @@ class StoredFile:
     content: bytes
 
 
+_ABSENT = object()  # an attribute a module did not hold
+
+
 def load_bundle() -> BundleAPI:
     """Load the generator dynamically so the pre-implementation suite still type-checks."""
     return cast(BundleAPI, importlib.import_module("webui.paste_in.bundle"))
@@ -176,33 +179,6 @@ async def _complete(awaitable: Awaitable[object]) -> object:
     return await awaitable
 
 
-def invoke_tool(
-    module: ModuleType,
-    program: str,
-    *,
-    metadata: Mapping[str, object] | None = None,
-    user: Mapping[str, object] | None = None,
-) -> str:
-    """Call the sole tool operation with its one discovered model parameter + reserved context."""
-    _name, operation = public_tool_operation(module)
-    parameters = inspect.signature(operation).parameters
-    model_parameters = [name for name in parameters if not name.startswith("__")]
-    assert len(model_parameters) == 1, model_parameters
-    reserved: dict[str, object] = {
-        "__metadata__": metadata,
-        "__user__": user,
-    }
-    kwargs = {
-        model_parameters[0]: program,
-        **{name: value for name, value in reserved.items() if name in parameters},
-    }
-    result = operation(**kwargs)
-    if inspect.isawaitable(result):
-        result = asyncio.run(_complete(cast(Awaitable[object], result)))
-    assert isinstance(result, str)
-    return result
-
-
 @contextmanager
 def fake_open_webui(stored: Sequence[StoredFile], root: Path) -> Iterator[list[tuple[str, str]]]:
     """Install a strict `open_webui` file + storage seam over a real on-disk store.
@@ -222,9 +198,14 @@ def fake_open_webui(stored: Sequence[StoredFile], root: Path) -> Iterator[list[t
     for item in stored:
         (root / item.file_id).write_bytes(item.content)
 
-    async def get_file_by_id_and_user_id(file_id: str, user_id: str) -> object | None:
-        lookups.append((file_id, user_id))
-        item = rows.get(file_id)
+    async def get_file_by_id_and_user_id(  # Open WebUI 0.12.3 `models/files.py:168-170`
+        id: str,  # noqa: A002 - the real parameter name, so a keyword call fails as it would there
+        user_id: str,
+        db: object | None = None,
+    ) -> object | None:
+        assert db is None, db
+        lookups.append((id, user_id))
+        item = rows.get(id)
         if item is None or item.user_id != user_id:
             return None
         return SimpleNamespace(
@@ -515,6 +496,15 @@ def _absolute_imports(source: str) -> Iterator[tuple[str, tuple[str, ...]]]:
             yield node.module, tuple(alias.name for alias in node.names if alias.name != "*")
 
 
+def _restore(touched: list[tuple[ModuleType, str, object]]) -> None:
+    """Put back each attribute a context set, newest first; an absent one leaves again."""
+    for owner, attribute, value in reversed(touched):
+        if value is _ABSENT:
+            owner.__dict__.pop(attribute, None)
+        else:
+            setattr(owner, attribute, value)
+
+
 @contextmanager
 def artifact_import_environment(bundle: BundleAPI, text: str) -> Iterator[None]:
     """Preload stdlib imports and strict-enough Open WebUI stubs, then restore module state."""
@@ -530,6 +520,14 @@ def artifact_import_environment(bundle: BundleAPI, text: str) -> Iterator[None]:
 
     original = dict(sys.modules)
     stub_modules: dict[str, ModuleType] = {}
+    # (module, attribute, its earlier value or `_ABSENT`): restored in the `finally`, since an
+    # existing module (another fixture's fake store) keeps its identity across the context.
+    touched: list[tuple[ModuleType, str, object]] = []
+
+    def put(owner: ModuleType, attribute: str, value: object) -> None:
+        touched.append((owner, attribute, owner.__dict__.get(attribute, _ABSENT)))
+        setattr(owner, attribute, value)
+
     for module_name, names in requirements:
         if module_name != "open_webui" and not module_name.startswith("open_webui."):
             continue
@@ -544,13 +542,14 @@ def artifact_import_environment(bundle: BundleAPI, text: str) -> Iterator[None]:
                 sys.modules[name] = module
             if end > 1:
                 parent_name = ".".join(parts[: end - 1])
-                setattr(sys.modules[parent_name], parts[end - 1], module)
+                put(sys.modules[parent_name], parts[end - 1], module)
         module = sys.modules[module_name]
         for name in names:
-            setattr(module, name, object())
+            put(module, name, object())
     try:
         yield
     finally:
+        _restore(touched)
         sys.modules.clear()
         sys.modules.update(original)
 

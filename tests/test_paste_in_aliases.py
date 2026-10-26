@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from outlet_support import CHART_SENT_TEXT
 from paste_in_support import (
     REPO_ROOT,
     StoredFile,
@@ -34,7 +35,6 @@ from webui.paste_in import demo_tool, tool
 from webui.paste_in.aliases import parse_aliases
 from webui.paste_in.receipt import RECEIPT_ATTR, Receipt, read_receipt, write_receipt
 from webui.paste_in.sandbox import wrapper_code
-from webui.paste_in.verdicts import CHART_SENT
 
 _USER = "user-1"
 _WEATHER = b"date,city,temp_c,precip_mm\n2024-01-01,Sapporo,1.5,0.5\n2024-01-02,Naha,2.5,1.5\n"
@@ -158,13 +158,13 @@ def _draw(tools: tool.Tools) -> tuple[str, Receipt | None]:
 def test_q43_v2_the_tool_records_its_valve_aliases() -> None:
     """The tool decides nothing (M19.5): it records the parsed Valve aliases in its receipt."""
     reply, receipt = _draw(tool.Tools())
-    assert reply == CHART_SENT
+    assert reply == CHART_SENT_TEXT
     assert receipt == Receipt(_PROGRAM, ("file-0",), _REQUEST, ())
 
     aliased = tool.Tools()
     aliased.valves = tool.Tools.Valves(column_aliases=_TEXT)
     reply, receipt = _draw(aliased)
-    assert reply == CHART_SENT
+    assert reply == CHART_SENT_TEXT
     assert receipt == Receipt(_PROGRAM, ("file-0",), _REQUEST, _PARSED)
 
 

@@ -15,7 +15,7 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from outlet_support import Bomb, load
+from outlet_support import CHART_SENT_TEXT, Bomb, load
 from paste_in_support import REPO_ROOT, fake_open_webui, filter_request, public_tool_operation
 
 
@@ -59,7 +59,7 @@ def test_o6_arbitrary_program_bytes_are_receipted_without_a_verdict(program: str
     )
     receipt = load("receipt").read_receipt(request)
     assert receipt == load("receipt").Receipt(program, (), "original request", ())
-    assert isinstance(result, str) and result == load("verdicts").CHART_SENT
+    assert isinstance(result, str) and result == CHART_SENT_TEXT
 
 
 @pytest.mark.parametrize("demo", [False, True], ids=["production", "demo"])
@@ -91,7 +91,7 @@ def test_o6_last_call_wins_with_all_ids_request_and_parsed_aliases(*, demo: bool
         "sales by area",
         (("revenue", "sales"), ("revenue", "income"), ("region", "area")),
     )
-    assert results == [load("verdicts").CHART_SENT] * 2
+    assert results == [CHART_SENT_TEXT] * 2
 
 
 def test_o6_tool_neither_imports_nor_calls_judge_or_reader(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,6 +116,6 @@ def test_o6_tool_neither_imports_nor_calls_judge_or_reader(monkeypatch: pytest.M
             load("tool").Tools().draw_figure("plt.invalid(", __request__=request),
         )
     )
-    assert reply == load("verdicts").CHART_SENT
+    assert reply == CHART_SENT_TEXT
     assert load("receipt").read_receipt(request).program == "plt.invalid("
     assert bomb.calls == 0
