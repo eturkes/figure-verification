@@ -217,7 +217,10 @@ def verify_snapshot(manifest: Manifest, root: Path) -> VerifyReport:
         missing=tuple(sorted(faults["missing"])),
         mismatched=tuple(sorted(faults["mismatched"])),
         unexpected=tuple(sorted(path for path in discovered if path not in manifest.files)),
-        unreadable=tuple(sorted(faults["unreadable"] + list(unlistable))),
+        # A pinned name that is an unlistable directory is already mismatched: it is not the file.
+        unreadable=tuple(
+            sorted(faults["unreadable"] + [d for d in unlistable if d not in manifest.files])
+        ),
     )
 
 

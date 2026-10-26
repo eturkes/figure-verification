@@ -950,3 +950,18 @@ def test_p23_unlistable_directory_is_unreadable_and_refuses_to_write(tmp_path: P
         assert manifest_path.read_bytes() == before
     finally:
         blocked.chmod(0o700)
+
+
+def test_p24_a_pinned_file_turned_unlistable_directory_is_mismatched_alone(tmp_path: Path) -> None:
+    """P24: the four fault sets stay disjoint. A pinned file replaced by a directory nobody can
+    list is mismatched (it is not the pinned file); the walker's unlistable report of the same
+    name would list it twice."""
+    snapshot = _snapshot_module()
+    manifest, root, _ = _synthetic_snapshot(snapshot, tmp_path)
+    (root / "alpha.bin").unlink()
+    (root / "alpha.bin").mkdir()
+    (root / "alpha.bin").chmod(0)
+    try:
+        _assert_report(snapshot.verify_snapshot(manifest, root), mismatched=("alpha.bin",))
+    finally:
+        (root / "alpha.bin").chmod(0o700)
