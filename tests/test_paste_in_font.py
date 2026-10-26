@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.util
 import io
 import logging
 import threading
@@ -300,3 +301,26 @@ def test_q44_r_a_path_text_glyph_outside_the_cut_fails(tmp_path: Path) -> None:
     assert _glyphs(reader.run(program, cut)) > 0
     assert _glyphs(reader.run(program, _write(SOURCE, tmp_path))) == 0
     assert _glyphs(reader.run(program.replace("chr(0x9031)", "'患'"), cut)) == 0
+
+
+def test_the_test_font_answers_for_every_character_the_tracked_inputs_hold() -> None:
+    """The subset is current: its cmap = what `tools/subset_test_font.py` keeps today -- every
+    tracked test-input character, less the ones `NotoSansJP-subset-absent.txt` says the source font
+    lacks -- so a test character added without a regeneration names itself here, not as some
+    figure's `glyph_missing`."""
+    path = REPO_ROOT / "tools" / "subset_test_font.py"
+    spec = importlib.util.spec_from_file_location("subset_test_font", path)
+    assert spec is not None and spec.loader is not None
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    wanted = cast(set[int], tool.characters())
+    absent = {
+        int(line.removeprefix("U+"), 16)
+        for line in cast(Path, tool.ABSENT).read_text(encoding="utf-8").splitlines()
+    }
+    with TTFont(io.BytesIO(SOURCE)) as font:
+        mapped = set(font.getBestCmap())
+    stale = sorted(f"U+{point:04X}" for point in wanted ^ (mapped | absent))
+    assert not stale and not mapped & absent, (
+        f"regenerate tests/fonts/NotoSansJP-subset.ttf (tools/subset_test_font.py): {stale}"
+    )
