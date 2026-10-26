@@ -13,9 +13,12 @@ Steps, every one fail-closed:
 2. Scope = every file of the repo's packages (`verifier`, `webui`, `model_backend`,
    `nucllei_skill`) holding a line the test executes, from one coverage run in the stage; a
    file measured outside it aborts.
-3. poodle mutates the scope inside the stage. Each trial runs the one node from its own copied tree
-   behind a canary plugin that exits 3 when a scope module imports from anywhere else: the editable
-   `.pth` points at the primary `src`, and a trial over those bytes would credit unmutated code.
+3. poodle mutates the scope inside the stage, through a staged shim that splices each mutant at
+   the UTF-8 byte offsets `ast` reports (poodle 1.3.4 slices the `str` line by them, landing a
+   mutant past a non-ASCII character on other text). Each trial runs the one node from its own
+   copied tree behind a canary plugin that exits 3 when a scope module imports from anywhere else:
+   the editable `.pth` points at the primary `src`, and a trial over those bytes would credit
+   unmutated code.
 4. Verdict per mutant from its JSON record alone. poodle counts every nonzero rc but 1 as found (a
    collection error, a canary exit), so only pytest rc 1 (`Mutant Found`) kills; `Mutant Not Found`
    survives; anything else is ABNORMAL and credits nothing.
@@ -57,6 +60,32 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         origin = Path((spec and spec.origin) or "").resolve()
         if not origin.is_relative_to(here):
             pytest.exit(f"mutation canary: {name} from {origin}, outside {here}", returncode=3)
+'''
+_SPLICE = "_mutation_splice"
+_SPLICE_SOURCE = '''"""poodle's CLI with each mutant spliced at the byte offsets `ast` reports."""
+
+import multiprocessing
+
+import poodle.cli
+import poodle.run
+import poodle.util
+
+
+def splice(mutant, file_lines):
+    # `ast` offsets count UTF-8 bytes; poodle 1.3.4 slices the `str` line by them, so past a
+    # non-ASCII character its mutant lands on other text (a SyntaxError, or another mutant).
+    lines = list(file_lines)
+    head = lines[mutant.lineno - 1].encode()[: mutant.col_offset].decode()
+    tail = lines[mutant.end_lineno - 1].encode()[mutant.end_col_offset :].decode()
+    lines[mutant.lineno - 1 : mutant.end_lineno] = [head + mutant.text + tail]
+    return lines
+
+
+if __name__ == "__main__":
+    poodle.util.mutate_lines = poodle.run.mutate_lines = splice
+    # Trials run in pool workers: `fork` hands them the patch, 3.14's `forkserver` would not.
+    multiprocessing.set_start_method("fork")
+    poodle.cli.main()
 '''
 # `src` first: pytest inserts its `pythonpath` ahead of PYTHONPATH and the editable `.pth`.
 _PYTEST = ("-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "pythonpath=src tests .")
@@ -180,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _stage(stage)
         (stage / f"{_CANARY}.py").write_text(_CANARY_SOURCE, "utf-8")
+        (stage / f"{_SPLICE}.py").write_text(_SPLICE_SOURCE, "utf-8")
         try:
             scope = _scope(stage, args.node)
         except AbortError as error:
@@ -189,8 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.writelines(f"  {path}\n" for path in scope)
         report = stage / "poodle-report.json"
         config = _config(stage, args.node, scope)
-        # poodle ships no `__main__`: its console script sits beside this interpreter.
-        poodle = [str(Path(sys.executable).parent / "poodle"), "-c", str(config)]
+        poodle = [sys.executable, "-m", _SPLICE, "-c", str(config)]
         run = subprocess.run(  # noqa: S603 - argv built from constants + paths made here
             [*poodle, "-w", str(args.workers), "--json", str(report)],
             cwd=stage,
