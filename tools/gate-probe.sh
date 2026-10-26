@@ -144,6 +144,14 @@ plant_untracked_module_pytestmark() {
     printf '\n\npytestmark = pytest.mark.skip(reason="probe")\n' >>"$TEST_GATE"
 }
 
+plant_untracked_class_decorator() {
+    printf '\n\n@pytest.mark.skip(reason="probe")\nclass TestG94ClassDecoratorProbe:\n    def test_case(self) -> None:\n        """Probe."""\n' >>"$TEST_GATE"
+}
+
+plant_untracked_class_pytestmark() {
+    printf '\n\nclass TestG93ClassPytestmarkProbe:\n    pytestmark = pytest.mark.skip(reason="probe")\n\n    def test_case(self) -> None:\n        """Probe."""\n' >>"$TEST_GATE"
+}
+
 plant_unarchived_closed_unit() {
     # A unit's close appends its entry to the record, so the plant does too. The letter suffix is
     # the firing input for the id shape (`M12.6b` -> `m12u6b.md`) that a suffix-blind pattern skips.
@@ -453,9 +461,10 @@ probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_c
     'stranded contract citations' \
     plant_stranded_contract_citation
 
-# Four detection paths, four controls. They are materially different reads -- a decorator, a call
-# statement, a keyword inside a parametrize list, a module-level assignment -- so deleting the
-# helper behind one leaves the other three probes green and the hole unproven.
+# Six detection paths, six controls. They are materially different reads -- a decorator, a call
+# statement, a keyword inside a parametrize list, a module-level assignment, a class decorator, a
+# class-level assignment -- so deleting the helper behind one leaves the other probes green and the
+# hole unproven.
 probe s8-untracked-skip-marker tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_skip_marker
@@ -475,6 +484,14 @@ probe s8-untracked-param-marks tests/test_spec.py::test_s8_every_disabled_case_n
 probe s8-untracked-module-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_module_pytestmark
+
+probe s8-untracked-class-decorator tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_class_decorator
+
+probe s8-untracked-class-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_class_pytestmark
 
 probe s9-phase-without-name tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
     'Phase opens with no phase name' \

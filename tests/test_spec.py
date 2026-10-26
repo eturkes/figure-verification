@@ -385,13 +385,12 @@ def _unconditional_skips(body: list[ast.stmt], names: _PytestNames) -> Iterator[
             yield from _unconditional_skips(statement.body, names)
 
 
-def _disabled_cases(path: Path) -> list[tuple[int, str]]:
-    """Each case in `path` that a green run never executes, as `(line, reason)`."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    names = _pytest_names(tree)
-    found: list[tuple[int, str]] = [
+def _pytestmarks(body: list[ast.stmt], names: _PytestNames) -> list[tuple[int, str]]:
+    """Each disabling marker a `pytestmark` in `body` assigns: a module's or a class's disables
+    every case under it at once."""
+    return [
         (marker.lineno, _reason(marker))
-        for statement in tree.body  # a module `pytestmark` disables every case in the file at once
+        for statement in body
         if isinstance(statement, ast.Assign)
         and any(
             isinstance(target, ast.Name) and target.id == "pytestmark"
@@ -400,7 +399,18 @@ def _disabled_cases(path: Path) -> list[tuple[int, str]]:
         for marker in _markers(statement.value)
         if _disables(marker, names)
     ]
+
+
+def _disabled_cases(path: Path) -> list[tuple[int, str]]:
+    """Each case in `path` that a green run never executes, as `(line, reason)`."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = _pytest_names(tree)
+    found = _pytestmarks(tree.body, names)
     for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):  # a class decorator disables every case in the class
+            found += _pytestmarks(node.body, names)
+            found += [(d.lineno, _reason(d)) for d in node.decorator_list if _disables(d, names)]
+            continue
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if not node.name.startswith("test_"):
@@ -422,11 +432,12 @@ def _disabled_cases(path: Path) -> list[tuple[int, str]]:
 def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
     """S8: every case `tests/` disables STATICALLY names its tracker -- the unit of an open `- [ ]`
     row in `Tasks`, or the `.agent/deferred.md` queue for an off-spine row. Read: a `skip`/`xfail`
-    marker, a constant-condition `skipif`, a `marks=` marker on a parametrized case, a module
-    `pytestmark`, and a `pytest.skip()` no condition can spare, each rooted in the module's OWN
-    `pytest` binding. Acceptance: a marker whose reason names neither tracker fails with its
-    `file:line`, and so does one citing a unit that has since closed; a skip outliving the unit that
-    justified it is a silently narrowed suite, and rc 0 is what a green run reports either way.
+    marker, a constant-condition `skipif`, a `marks=` marker on a parametrized case, a module or
+    class `pytestmark`, a class decorator, and a `pytest.skip()` no condition can spare, each rooted
+    in the module's OWN `pytest` binding. Acceptance: a marker whose reason names neither tracker
+    fails with its `file:line`, and so does one citing a unit that has since closed; a skip
+    outliving the unit that justified it is a silently narrowed suite, and rc 0 is what a green run
+    reports either way.
     Outside the claim, deliberately: a skip a REAL condition guards, and anything disabled at
     runtime, which no AST states -- the gate announces a run's skips by name, and that is where
     those surface."""
