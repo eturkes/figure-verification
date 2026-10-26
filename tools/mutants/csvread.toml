@@ -76,3 +76,18 @@ predicate = "the column's inferred dtype, not each token alone, picks the range 
 kills = "tests/test_pysrc_csv.py::test_q12_a_float64_column_admits_magnitudes_past_int32"
 anchor = '''    integer_column = column_dtype(texts) == "int64"'''
 mutant = '''    integer_column = all("." not in text for text in texts[:1])'''
+
+[[mutant]]
+id = "cr-r276-blank-record-kept"
+predicate = "an unquoted line of spaces or tabs alone (pandas skips it) is refused whole"
+kills = "tests/test_pysrc_csv.py::test_cr_r276_an_unquoted_blank_line_refuses_the_file[space-row]"
+anchor = '''            if _blank_record(lines, start):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "cr-r276-blank-header-kept"
+predicate = "an unquoted blank first line (pandas reads the next line as the header) is refused"
+kills = "tests/test_pysrc_csv.py::test_cr_r276_an_unquoted_blank_line_refuses_the_file[blank-first-line]"
+anchor = '''        if _blank_record(lines, 0):'''
+mutant = '''        if False:'''
+

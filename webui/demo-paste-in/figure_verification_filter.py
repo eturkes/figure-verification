@@ -5449,6 +5449,15 @@ def _check_record_endings(content: bytes) -> None:
             _refuse("csv_not_parsable")
 
 
+def _blank_record(lines: list[str], start: int) -> bool:
+    """A record that opens on a physical line of spaces and tabs alone (no quote, so it ends
+    there). pandas' C parser skips that line as blank (`skip_blank_lines`), so a one-column file
+    would gain a row (or another header) here that the sandbox never reads; quoted spaces stay a
+    cell in both."""
+    line = lines[start].removesuffix("\r")
+    return line != "" and line.strip(" \t") == ""
+
+
 def _check_cell_sizes(row: list[str], limit: int) -> None:
     if any(len(cell.encode("utf-8")) > limit for cell in row):
         _refuse("csv_too_large")
@@ -5486,12 +5495,16 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
         skipinitialspace=False,
         strict=True,
     )
+    lines = text.split("\n")
     try:
         header_row = next(reader)
+        if _blank_record(lines, 0):
+            _refuse("csv_not_parsable")
         budget.charge(_record_work(header_row))
         _check_header(header_row, limits)
 
         rows: list[tuple[str, ...]] = []
+        start = reader.line_num
         for row_number, row in enumerate(reader, start=1):
             if row_number > limits.max_csv_rows:
                 _refuse("csv_too_large")
@@ -5500,6 +5513,9 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
             _check_cell_sizes(row, limits.max_csv_cell_bytes)
             if len(row) != len(header_row):
                 _refuse("csv_not_parsable")
+            if _blank_record(lines, start):
+                _refuse("csv_not_parsable")
+            start = reader.line_num
             budget.charge(_record_work(row))
             rows.append(tuple(row))
     except StopIteration:

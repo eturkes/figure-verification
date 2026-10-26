@@ -76,6 +76,26 @@ def test_c6_strict_structural_profile() -> None:
 
 
 @pytest.mark.parametrize(
+    "content",
+    [
+        b"region\nwest\n \nwest\n",
+        b"region\nwest\n\t\nwest\n",
+        b"region\r\nwest\r\n  \r\n",
+        b" \nregion\nwest\n",
+    ],
+    ids=["space-row", "tab-row", "crlf-row", "blank-first-line"],
+)
+def test_cr_r276_an_unquoted_blank_line_refuses_the_file(content: bytes) -> None:
+    """R276 (code review): pandas skips a line of spaces or tabs alone as blank, while stdlib csv
+    reads it as a record; in a one-column file that was a row (`region\nwest\n \nwest\n` let a
+    count over a ` ` group pass) or another header. The file is refused whole, as every other
+    structural difference; quoted spaces stay a cell in both readers."""
+    assert read_table("data.csv", content) == Unreadable("data.csv", "csv_not_parsable")
+    assert _table(b'region\nwest\n" "\nwest\n').columns[0].texts == ("west", " ", "west")
+    assert _table(b"region\n west\n").columns[0].texts == (" west",)
+
+
+@pytest.mark.parametrize(
     ("content", "numbers", "keys"),
     [
         (b"site,value\n1,10\n2,20\n", (10.0, 20.0), (10.0, 20.0)),
