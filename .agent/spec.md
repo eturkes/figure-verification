@@ -62,6 +62,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
+- [ ] Code review (MAINTAIN request): every cell of `.agent/review.md` § Code review carries a verdict; each finding fixed with a green acceptance check, a `.agent/deferred.md` row blocked on the user, or routed; the full gate passes on a clean tree at the closing commit.
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
