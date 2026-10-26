@@ -1057,3 +1057,32 @@ def test_r183_a_setter_a_callback_runs_keeps_the_slot(axis: str, draw: str) -> N
         + f"ax.set_{axis}lim(0, 3)\n"  # 7
     )
     assert judge(_describe(source), Sources()) == Blocked("zero_not_in_limits", 5)
+
+
+def _zoned(hours: int) -> Description:
+    program = (
+        "import matplotlib.pyplot as plt\n"
+        "import matplotlib.dates as dates\n"
+        "from datetime import datetime, timedelta, timezone\n"
+        f"z = timezone(timedelta(hours={hours}))\n"
+        "fig, ax = plt.subplots()\n"
+        "ax.plot([datetime(2026, 1, 1, tzinfo=z), datetime(2026, 1, 2, tzinfo=z)], [3, 4])\n"
+        "ax.xaxis.set_major_formatter(dates.DateFormatter('%Y-%m-%d', tz=z))\n"
+    )
+    return _describe(program)
+
+
+@pytest.mark.parametrize("hours", [0, 9, -5])
+def test_cr_r272_a_date_reads_in_the_zone_its_data_carry(hours: int) -> None:
+    """R272 (code review): tz-aware datetimes leave their zone as the axis units, and the axis
+    labels local midnights; the reader read positions in UTC, so 2026-01-01 at UTC+9 became
+    2025-12-31T15:00 and the honest chart over `date,value` rows blocked `value_not_found`."""
+    axes = _zoned(hours).figures[0].axes[0]
+    dates = dict(axes.x.dates)
+    positions = cast("LineGeometry", axes.artists[0].geometry).x
+    assert [dates[position] for position in positions] == [
+        "2026-01-01T00:00:00",
+        "2026-01-02T00:00:00",
+    ]
+    sources = Sources((("d.csv", b"date,value\n2026-01-01,3\n2026-01-02,4\n"),), "date value")
+    assert isinstance(judge(_zoned(hours), sources), Passed)

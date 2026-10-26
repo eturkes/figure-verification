@@ -1278,6 +1278,7 @@ reader version is unwound before this version installs its own.
 
 import base64
 import contextlib
+import datetime as dt
 import functools
 import importlib
 import inspect
@@ -2074,8 +2075,12 @@ def _date(axes: Any, axis: Any, position: float) -> str | None:
         pandas = importlib.import_module("pandas")
         return str(pandas.Period(ordinal=int(position), freq=freq).start_time.isoformat())
     mdates = importlib.import_module("matplotlib.dates")
+    # Tz-aware data leave their zone as the axis units; the formatter reads positions in it, so
+    # the calendar reading does too (else UTC: a local midnight read as the day before).
+    units = axis.get_units()
+    zone = units if isinstance(units, dt.tzinfo) else None
     try:
-        return str(mdates.num2date(position).replace(tzinfo=None).isoformat())
+        return str(mdates.num2date(position, tz=zone).replace(tzinfo=None).isoformat())
     except (ValueError, OverflowError):
         return None
 

@@ -605,3 +605,10 @@ predicate = "a move draws nothing"
 kills = "tests/test_figure_corpus.py::test_corpus_case[cr-move-only-scatter-marker]"
 anchor = '''    return sum(1 for code in path.codes if code not in (path.MOVETO, path.STOP))'''
 mutant = '''    return len(path.codes)'''
+
+[[mutant]]
+id = "cr-r272-date-in-utc"
+predicate = "a date position reads in the zone its data carry"
+kills = "tests/test_figure_reader.py::test_cr_r272_a_date_reads_in_the_zone_its_data_carry[9]"
+anchor = '''    zone = units if isinstance(units, dt.tzinfo) else None'''
+mutant = '''    zone = None'''
