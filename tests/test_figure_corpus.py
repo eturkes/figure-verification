@@ -8,14 +8,14 @@ installed Pyodide (`.agent/measurements/`, M19.6).
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
 from verifier.figure import reader
 from verifier.figure.description import parse_description
 from verifier.figure.judge import Sources, judge
-from verifier.figure.reasons import Blocked
+from verifier.figure.reasons import Blocked, FigureReason
 
 _CORPUS = Path(__file__).parent / "figure_corpus"
 _DATA = Path(__file__).resolve().parents[1] / "data"
@@ -100,6 +100,26 @@ _RULES = (
     "label_not_consistent",
 )
 _SOURCE_FAULTS = ("csv_not_parsable",)
+
+
+# Reasons no corpus case reaches without a multi-MB file or a work meter turned down: each names
+# its end-to-end judge test.
+_JUDGE_TESTED = {
+    "csv_too_large": "test_cr_r309_an_oversize_file_blocks_csv_too_large",
+    "work_budget_exceeded": "test_work_budget_bounds_the_search",
+}
+
+
+def test_cr_r309_every_figure_reason_has_a_witness() -> None:
+    """R309 (code review): every reason the judge raises has a blocking corpus case or a named
+    end-to-end judge test; the inventory read its own lists alone, so two reasons sat in neither."""
+    import test_figure_values  # noqa: PLC0415 - the module that holds the judge tests
+
+    reasons = set(get_args(FigureReason))
+    assert set(_RUN + _RULES + _SOURCE_FAULTS) | set(_JUDGE_TESTED) == reasons
+    assert not set(_JUDGE_TESTED) & set(_RUN + _RULES + _SOURCE_FAULTS)
+    for name in _JUDGE_TESTED.values():
+        assert callable(getattr(test_figure_values, name, None)), name
 
 
 @pytest.mark.parametrize("reason", _RUN + _RULES + _SOURCE_FAULTS)

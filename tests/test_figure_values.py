@@ -133,6 +133,16 @@ def test_work_budget_bounds_the_search(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _judge(program, _sales("chart")) == Blocked("work_budget_exceeded", 2)
 
 
+def test_cr_r309_an_oversize_file_blocks_csv_too_large() -> None:
+    """R309 (code review): the judge refuses a file past `max_csv_bytes` from its length alone
+    (no corpus case: the corpus would need a file of 8 MB)."""
+    content = b"k,v\n" + b"a,1\n" * 2_000_001  # 8,000,008 bytes
+    program = _PLT + "plt.bar(['a'], [1])\n"
+    assert _judge(program, Sources((("big.csv", content),), "v by k")) == Blocked(
+        "csv_too_large", 2
+    )
+
+
 def test_sources_profile_faults_leave_columns_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
     from verifier.figure import sources  # noqa: PLC0415 - the module whose limits are moved
     from verifier.pysrc.limits import PysrcLimits  # noqa: PLC0415
