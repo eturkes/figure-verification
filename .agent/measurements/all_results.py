@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 # The installed Open WebUI bundle (Pyodide 314.0.3), the one sandbox every Node leg measures.
 BUILDS = ("31403",)
-FUNCTIONS = ("sin", "cos", "tan", "exp", "log", "sqrt")
 
 
 def load(name):
