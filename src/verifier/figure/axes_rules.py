@@ -153,6 +153,20 @@ def _check_clipping(axes: Axes, panel: Panel) -> None:
             block("point_clipped", call(axes, axis, f"{name}lim") or site)
 
 
+def check_colorbar(axes: Axes) -> None:
+    """A colorbar's own axes, after every panel's parts + axes: its value axis is never inverted
+    and its tick labels name the values they mark (reviewer-2 F7: the tick check ran inside the
+    parts stage, read the axes' tick slots alone and never read an inversion)."""
+    for name, axis in (("x", axes.x), ("y", axes.y)):
+        if axis.inverted:
+            invert = call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim")
+            block("axis_inverted", invert or axes.site)
+        if mismatched_tick(axis, key_labels=False) is not None:
+            block(
+                "tick_label_mismatch", call(axes, axis, f"{name}ticks", "axis-ticks") or axes.site
+            )
+
+
 def check_axes(panel: Panel) -> None:
     axes = panel.axes
     _check_transforms(axes, panel)

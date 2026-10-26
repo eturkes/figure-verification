@@ -13,7 +13,7 @@ pass's verdict unless the second passes or explains every value and blocks on a 
 from dataclasses import dataclass
 
 from verifier.figure.anchoring import Aliases, Anchoring
-from verifier.figure.axes_rules import check_axes
+from verifier.figure.axes_rules import check_axes, check_colorbar
 from verifier.figure.columns import check_anchoring, check_labels, drawn
 from verifier.figure.description import Description, Figure
 from verifier.figure.explain import Choice, Context, Unexplained, duplicate_key, explain
@@ -64,6 +64,9 @@ def integrity(description: Description) -> Judged | Blocked:
         figure, judged = panels(description)
         for panel in judged:
             check_axes(panel)
+        for axes in figure.axes:
+            if axes.colorbar_of is not None:
+                check_colorbar(axes)
         colorbars = {axes.colorbar_shown for axes in figure.axes if axes.colorbar_shown}
         legends = read_legends(judged, figure.legends)
         for panel in judged:

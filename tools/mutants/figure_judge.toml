@@ -117,3 +117,10 @@ kills = "tests/test_figure_values.py::test_m22_each_source_is_read_once_per_judg
 anchor = '''        second, explained = _values(judged, sources, context, unreadable, admitted=True)'''
 mutant = '''        read_request(sources.request)
         second, explained = _values(judged, sources, context, unreadable, admitted=True)'''
+
+[[mutant]]
+id = "cr-r311-colorbar-axes-skipped"
+predicate = "every colorbar axes faces its axes rules"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-colorbar-inverted]"
+anchor = '''                check_colorbar(axes)'''
+mutant = '''                pass'''

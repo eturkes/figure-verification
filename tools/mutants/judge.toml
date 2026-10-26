@@ -145,3 +145,23 @@ predicate = "a mark its own clip hides blocks point_clipped"
 kills = "tests/test_figure_corpus.py::test_corpus_case[cr-clip-box-line]"
 anchor = '''            if axes.artists[index].clipped:'''
 mutant = '''            if False:'''
+
+[[mutant]]
+id = "cr-r311-colorbar-inversion-unread"
+predicate = "a colorbar's inverted value axis blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-colorbar-inverted]"
+anchor = '''
+        if axis.inverted:
+            invert = call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim")
+'''
+mutant = '''
+        if False:
+            invert = call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim")
+'''
+
+[[mutant]]
+id = "cr-r311-colorbar-site-axes-only"
+predicate = "a colorbar tick block marks the latest tick call on its axis too"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-colorbar-formatter-site]"
+anchor = '''                "tick_label_mismatch", call(axes, axis, f"{name}ticks", "axis-ticks") or axes.site'''
+mutant = '''                "tick_label_mismatch", call(axes, axis, f"{name}ticks") or axes.site'''

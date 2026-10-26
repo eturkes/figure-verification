@@ -3028,6 +3028,319 @@ def rendered_markdown(text: str) -> object:
     return Rendered(text, "markdown")
 '''
 
+_SOURCES["verifier.figure.parts"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The closed artist set: every part of the figure is a judged family, listed text, or a block.
+
+Law = `.claude/rules/figure.md` § Closed artist set. A family is decided by (class, origin) and the
+records the reader attached (bar container, hist record, pie record, band arrays); a part the table
+does not name blocks, marking the line that created it. Each judged axes becomes a `Panel`.
+"""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Final, Literal, TypeAlias, cast
+
+from verifier.figure.description import (
+    Artist,
+    Axes,
+    BandArrays,
+    BandGeometry,
+    Description,
+    Figure,
+    LineGeometry,
+    RectGeometry,
+    ScatterGeometry,
+    TextGeometry,
+    call_line,
+)
+from verifier.figure.reasons import block
+
+Family: TypeAlias = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
+_Kind: TypeAlias = Family | Literal["text"] | None
+
+_RASTER: Final = frozenset({"AxesImage", "QuadMesh", "FigureImage", "PcolorImage"})
+_LINES: Final = frozenset({"Axes.plot", "Axes.step"})
+# Reference origin -> horizontal (its value lies on x).
+_REFERENCES: Final = {
+    "Axes.axhline": False,
+    "Axes.axhspan": False,
+    "Axes.axvline": True,
+    "Axes.axvspan": True,
+}
+_REFERENCE_LINES: Final = frozenset({"Axes.axhline", "Axes.axvline"})
+_REFERENCE_SPANS: Final = frozenset({"Axes.axhspan", "Axes.axvspan"})
+_LISTED: Final = frozenset({"Axes.text", "Axes.annotate", "Axes.bar_label", "Axes.pie"})
+_BANDS: Final = frozenset({"Axes.fill_between", "stackplot"})
+_BARS: Final = frozenset({"Axes.bar", "Axes.barh"})
+_TOLERANCE: Final = 1e-9
+
+
+@dataclass(frozen=True, slots=True)
+class Mark:
+    """One judged mark: its family, the axes artists that draw it, and the record grouping them.
+
+    `horizontal` = the mark's value lies on x (barh, a horizontal hist, an axvline/axvspan).
+    """
+
+    family: Family
+    artists: tuple[int, ...]
+    container: int | None = None
+    pie: int | None = None
+    horizontal: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Panel:
+    """One judged axes: its index in the figure, its marks, and the text it only lists."""
+
+    index: int
+    axes: Axes
+    marks: tuple[Mark, ...]
+    texts: tuple[str, ...]
+    pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
+    proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
+    size_keys: tuple[int, ...] = ()  # point-free scatters: size keys a legend may show (luna F4)
+    outlines: tuple[tuple[int, int], ...] = ()  # (line, band): a legend names the band by it (F5)
+
+
+def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
+    origin = artist.origin or ""
+    if origin in _LINES:
+        return "line"
+    return "reference" if origin in _REFERENCE_LINES else None
+
+
+def _scatter(artist: Artist, _axes: Axes, _index: int) -> _Kind:
+    return "scatter" if artist.origin == "Axes.scatter" else None
+
+
+def _rectangle(artist: Artist, axes: Axes, index: int) -> _Kind:
+    origin = artist.origin or ""
+    if origin in _REFERENCE_SPANS:  # matplotlib 3.9 draws a span as a Rectangle
+        return "reference"
+    owner = next((c for c in axes.containers if index in c.members), None)
+    upright = cast("RectGeometry", artist.geometry).angle == 0.0
+    if owner is None or owner.cls != "BarContainer" or not upright:  # a rotated bar is no bar
+        return None
+    if origin in _BARS and owner.hist is None:
+        return "bar"
+    return "hist" if origin == "Axes.hist" and owner.hist is not None else None
+
+
+def _polygon(artist: Artist, _axes: Axes, _index: int) -> _Kind:
+    # matplotlib 3.8 (the sandbox) draws a span as a Polygon; any other Polygon is unjudged.
+    return "reference" if (artist.origin or "") in _REFERENCE_SPANS else None
+
+
+def _wedge(artist: Artist, axes: Axes, index: int) -> _Kind:
+    recorded = any(index in pie.wedges for pie in axes.pies)
+    return "pie" if artist.origin == "Axes.pie" and recorded else None
+
+
+def _band(artist: Artist, _axes: Axes, _index: int) -> _Kind:
+    geometry = cast("BandGeometry", artist.geometry)
+    # The arrays are read back from the final polygon, and the input count shows what it dropped.
+    read_back = geometry.band is not None and geometry.inputs is not None
+    return "band" if artist.origin in _BANDS and read_back else None
+
+
+def _text(artist: Artist, _axes: Axes, _index: int) -> _Kind:
+    return "text" if artist.origin in _LISTED else None
+
+
+_FAMILIES: Final[dict[str, Callable[[Artist, Axes, int], _Kind]]] = {
+    "Line2D": _line,
+    "PathCollection": _scatter,
+    "Rectangle": _rectangle,
+    "Polygon": _polygon,
+    "Wedge": _wedge,
+    "PolyCollection": _band,
+    "FillBetweenPolyCollection": _band,
+    "Text": _text,
+    "Annotation": _text,
+}
+
+
+def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
+    """An ink-free legend handle the program added to the axes (seaborn's `hue` keys): no
+    plotting origin, a zero-size rectangle or a line holding no point, the handle of an entry of
+    this axes' own legend. It draws nothing, so it is no mark; the legend names a mark through it.
+    """
+    geometry = artist.geometry
+    inkless = (isinstance(geometry, RectGeometry) and geometry.width == geometry.height == 0) or (
+        isinstance(geometry, LineGeometry) and not geometry.x and not geometry.y
+    )
+    entries = axes.legend.entries if axes.legend is not None else ()
+    return (
+        artist.origin is None
+        and inkless
+        and any(entry.axes == index and entry.target == number for entry in entries)
+    )
+
+
+def _size_key(artist: Artist) -> bool:
+    """A size key built by hand (`ax.scatter([], [], s=…, label=…)`): no point, one size. It draws
+    nothing, so it is no mark; a legend reads it as a key of the sizes a scatter draws
+    (`legends.py::_sized`).
+    """
+    geometry = cast("ScatterGeometry", artist.geometry)
+    return not geometry.offsets and len(geometry.sizes) == 1
+
+
+def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
+    """The family one artist belongs to; `None` = outside the closed set."""
+    read = _FAMILIES.get(artist.cls)
+    return None if read is None else read(artist, axes, index)
+
+
+def _outlined(artist: Artist, bands: dict[int, Artist]) -> list[int]:
+    """The bands a plotted line outlines: drawn in data coordinates, point to point, it equals one
+    of their edges (pandas area outlines: stack geometry, not data). Equal arrays drawn in another
+    transform or as steps lie elsewhere.
+
+    `artist` is a judged line and every `bands` value a judged band, so their geometry is known.
+    """
+    line = cast("LineGeometry", artist.geometry)
+    if artist.transform != "data" or line.drawstyle != "default":
+        return []
+    outlined: list[int] = []
+    for number, band in bands.items():
+        arrays = cast("BandArrays", cast("BandGeometry", band.geometry).band)
+        if line.x == arrays.x and line.y in (arrays.y1, arrays.y2):
+            outlined.append(number)
+    return outlined
+
+
+def _marks(axes: Axes, families: dict[int, Family]) -> list[Mark]:
+    marks: list[Mark] = []
+    for number, container in enumerate(axes.containers):
+        members = tuple(i for i in container.members if families.get(i) in ("bar", "hist"))
+        if members:
+            family: Family = "hist" if container.hist is not None else "bar"
+            horizontal = container.orientation == "horizontal"
+            marks.append(Mark(family, members, container=number, horizontal=horizontal))
+    for number, pie in enumerate(axes.pies):
+        if pie.wedges:
+            marks.append(Mark("pie", pie.wedges, pie=number))
+    for index, family in families.items():
+        if family in ("line", "scatter", "band"):
+            marks.append(Mark(family, (index,)))
+        elif family == "reference":
+            marks.append(
+                Mark(
+                    "reference", (index,), horizontal=_REFERENCES[axes.artists[index].origin or ""]
+                )
+            )
+    return sorted(marks, key=lambda mark: mark.artists[0])
+
+
+def _overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+    width = min(a[2], b[2]) - max(a[0], b[0])
+    height = min(a[3], b[3]) - max(a[1], b[1])
+    return width > _TOLERANCE and height > _TOLERANCE
+
+
+# What a colorbar draws itself: its colour solids and the dividers between them.
+_COLORBAR_PARTS: Final = frozenset({("QuadMesh", "Axes.pcolormesh"), ("LineCollection", None)})
+
+
+def _check_colorbar(axes: Axes) -> None:
+    """A colorbar holds its own parts alone (its axes rules run in the axes stage:
+    `axes_rules.py::check_colorbar`)."""
+    for artist in axes.artists:
+        if (artist.cls, artist.origin) not in _COLORBAR_PARTS:
+            block("artist_not_judged", artist.site)
+
+
+def _judged_axes(figure: Figure) -> list[int]:
+    """The judged axes; a colorbar axes passes only as the colorbar of a judged scatter."""
+    judged: list[int] = []
+    for index, axes in enumerate(figure.axes):
+        if axes.cls != "Axes":
+            block("axes_not_judged", axes.site)
+        if axes.colorbar_of is None:
+            judged.append(index)
+            continue
+        owner, artist = axes.colorbar_of
+        mappable = figure.axes[owner].artists[artist]
+        if (mappable.cls, mappable.origin) != ("PathCollection", "Axes.scatter"):
+            block("axes_not_judged", axes.site)
+        _check_colorbar(axes)
+    for position, first in enumerate(judged):
+        for second in judged[position + 1 :]:
+            a, b = figure.axes[first], figure.axes[second]
+            if (second in a.shared_x or second in a.shared_y) and a.position == b.position:
+                block("axes_twin", call_line(a.calls, "twin") or b.site)
+            if _overlap(a.position, b.position):
+                block("axes_overlap", b.site)
+    return judged
+
+
+def _panel(index: int, axes: Axes) -> Panel:
+    families: dict[int, Family] = {}
+    texts: list[str] = []
+    labels: list[str] = []
+    proxies: list[int] = []
+    size_keys: list[int] = []
+    keys = {text for pie in axes.pies for text in pie.texts if text is not None}
+    for number, artist in enumerate(axes.artists):
+        if artist.cls in _RASTER:
+            block("raster_image", artist.site)
+        kind = _family(artist, axes, number)
+        if kind is None and _proxy(artist, axes, index, number):
+            proxies.append(number)
+            continue
+        if kind is None:
+            block("artist_not_judged", artist.site)
+        if kind == "scatter" and _size_key(artist):
+            size_keys.append(number)
+            continue
+        if kind == "text":
+            text = cast("TextGeometry", artist.geometry).text
+            if text.strip():
+                (labels if number in keys else texts).append(text)
+        else:
+            families[number] = kind
+    bands = {i: axes.artists[i] for i, family in families.items() if family == "band"}
+    outlines: list[tuple[int, int]] = []
+    for number in [i for i, family in families.items() if family == "line"]:
+        outlined = _outlined(axes.artists[number], bands)
+        if outlined:
+            del families[number]
+        # A legend entry naming the line names its band (luna F5): the one band whose edge it is,
+        # away from a zero base. A stack's shared edge outlines two bands and names neither.
+        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):
+            outlines.append((number, outlined[0]))
+    marks = _marks(axes, families)
+    if not marks:
+        block("no_data", axes.site)
+    return Panel(
+        index,
+        axes,
+        tuple(marks),
+        tuple(texts),
+        tuple(labels),
+        tuple(proxies),
+        tuple(size_keys),
+        tuple(outlines),
+    )
+
+
+def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:
+    """The one figure's judged panels, or a block naming the first part outside the closed set.
+
+    Precondition: the figure stage passed, so exactly one figure is described.
+    """
+    figure = description.figures[0]
+    for part in figure.others:
+        block("raster_image" if part.cls in _RASTER else "artist_not_judged", part.site)
+    judged = tuple(_panel(index, figure.axes[index]) for index in _judged_axes(figure))
+    if not judged:
+        block("no_data", figure.site)
+    return figure, judged
+'''
+
 _SOURCES["verifier.figure.ticks"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Tick labels must denote their positions (ruling 3: each tick label = the value at its position).
@@ -4159,320 +4472,181 @@ class KeyReader:
         return Key(slot=int(position)) if position.is_integer() and position >= 0 else _NONE
 '''
 
-_SOURCES["verifier.figure.parts"] = r'''
+_SOURCES["verifier.figure.shapes"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The closed artist set: every part of the figure is a judged family, listed text, or a block.
+"""What each judged mark draws, read off the reader's geometry: coordinates, bars, bands, colour.
 
-Law = `.claude/rules/figure.md` § Closed artist set. A family is decided by (class, origin) and the
-records the reader attached (bar container, hist record, pie record, band arrays); a part the table
-does not name blocks, marking the line that created it. Each judged axes becomes a `Panel`.
+Shared by the axes, mark, legend and value stages, so every stage reads one mark the same way.
+`Mark.horizontal` = the mark's value lies on x (barh, a horizontal hist, an axvline/axvspan).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Final, Literal, TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from verifier.figure.description import (
-    Artist,
     Axes,
     BandArrays,
     BandGeometry,
-    Description,
-    Figure,
     LineGeometry,
+    PolygonGeometry,
     RectGeometry,
     ScatterGeometry,
-    TextGeometry,
-    call_line,
+    WedgeGeometry,
 )
-from verifier.figure.reasons import block
-from verifier.figure.ticks import mismatched_tick
+from verifier.figure.parts import Mark, Panel
 
-Family: TypeAlias = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
-_Kind: TypeAlias = Family | Literal["text"] | None
-
-_RASTER: Final = frozenset({"AxesImage", "QuadMesh", "FigureImage", "PcolorImage"})
-_LINES: Final = frozenset({"Axes.plot", "Axes.step"})
-# Reference origin -> horizontal (its value lies on x).
-_REFERENCES: Final = {
-    "Axes.axhline": False,
-    "Axes.axhspan": False,
-    "Axes.axvline": True,
-    "Axes.axvspan": True,
-}
-_REFERENCE_LINES: Final = frozenset({"Axes.axhline", "Axes.axvline"})
-_REFERENCE_SPANS: Final = frozenset({"Axes.axhspan", "Axes.axvspan"})
-_LISTED: Final = frozenset({"Axes.text", "Axes.annotate", "Axes.bar_label", "Axes.pie"})
-_BANDS: Final = frozenset({"Axes.fill_between", "stackplot"})
-_BARS: Final = frozenset({"Axes.bar", "Axes.barh"})
-_TOLERANCE: Final = 1e-9
+Coordinate: TypeAlias = tuple[
+    int, float, int | None
+]  # (dimension 0 = x / 1 = y, value, artist line)
+RGB: TypeAlias = tuple[float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
-class Mark:
-    """One judged mark: its family, the axes artists that draw it, and the record grouping them.
-
-    `horizontal` = the mark's value lies on x (barh, a horizontal hist, an axvline/axvspan).
-    """
-
-    family: Family
-    artists: tuple[int, ...]
-    container: int | None = None
-    pie: int | None = None
-    horizontal: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class Panel:
-    """One judged axes: its index in the figure, its marks, and the text it only lists."""
+class Bar:
+    """One bar read by orientation: where it sits on the key axis and how far it reaches."""
 
     index: int
-    axes: Axes
-    marks: tuple[Mark, ...]
-    texts: tuple[str, ...]
-    pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
-    proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
-    size_keys: tuple[int, ...] = ()  # point-free scatters: size keys a legend may show (luna F4)
-    outlines: tuple[tuple[int, int], ...] = ()  # (line, band): a legend names the band by it (F5)
+    key: float  # start on the key axis
+    thickness: float
+    base: float
+    extent: float  # signed length along the value axis
+
+    @property
+    def center(self) -> float:
+        return self.key + self.thickness / 2
+
+    @property
+    def end(self) -> float:
+        return self.base + self.extent
 
 
-def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    origin = artist.origin or ""
-    if origin in _LINES:
-        return "line"
-    return "reference" if origin in _REFERENCE_LINES else None
+def bars(axes: Axes, mark: Mark) -> list[Bar]:
+    """The mark's rectangles, by orientation; a bar or hist mark holds rectangles alone."""
+    found: list[Bar] = []
+    for index in mark.artists:
+        rect = cast("RectGeometry", axes.artists[index].geometry)
+        if mark.horizontal:
+            found.append(Bar(index, rect.y, rect.height, rect.x, rect.width))
+        else:
+            found.append(Bar(index, rect.x, rect.width, rect.y, rect.height))
+    return found
 
 
-def _scatter(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    return "scatter" if artist.origin == "Axes.scatter" else None
+def _reference(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
+    """A reference mark's data coordinates, on its data dimension alone."""
+    artist = axes.artists[mark.artists[0]]
+    dimension = 0 if mark.horizontal else 1
+    geometry = artist.geometry
+    if isinstance(geometry, LineGeometry):
+        values = geometry.x if dimension == 0 else geometry.y
+        yield from ((dimension, value, artist.site) for value in values)
+    elif isinstance(geometry, RectGeometry):
+        start = geometry.x if dimension == 0 else geometry.y
+        extent = geometry.width if dimension == 0 else geometry.height
+        yield dimension, start, artist.site
+        yield dimension, start + extent, artist.site
+    else:  # matplotlib 3.8 (the sandbox) draws a span as a Polygon
+        polygon = cast("PolygonGeometry", geometry)
+        yield from ((dimension, pair[dimension], artist.site) for pair in polygon.xy)
 
 
-def _rectangle(artist: Artist, axes: Axes, index: int) -> _Kind:
-    origin = artist.origin or ""
-    if origin in _REFERENCE_SPANS:  # matplotlib 3.9 draws a span as a Rectangle
-        return "reference"
-    owner = next((c for c in axes.containers if index in c.members), None)
-    upright = cast("RectGeometry", artist.geometry).angle == 0.0
-    if owner is None or owner.cls != "BarContainer" or not upright:  # a rotated bar is no bar
-        return None
-    if origin in _BARS and owner.hist is None:
-        return "bar"
-    return "hist" if origin == "Axes.hist" and owner.hist is not None else None
+def _line_pairs(geometry: LineGeometry) -> list[tuple[float, float]]:
+    return list(zip(geometry.x, geometry.y, strict=True))
 
 
-def _polygon(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    # matplotlib 3.8 (the sandbox) draws a span as a Polygon; any other Polygon is unjudged.
-    return "reference" if (artist.origin or "") in _REFERENCE_SPANS else None
+def _scatter_pairs(geometry: ScatterGeometry) -> list[tuple[float, float]]:
+    return list(geometry.offsets)
 
 
-def _wedge(artist: Artist, axes: Axes, index: int) -> _Kind:
-    recorded = any(index in pie.wedges for pie in axes.pies)
-    return "pie" if artist.origin == "Axes.pie" and recorded else None
+def _rect_pairs(geometry: RectGeometry) -> list[tuple[float, float]]:
+    return [(geometry.x, geometry.y), (geometry.x + geometry.width, geometry.y + geometry.height)]
 
 
-def _band(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    geometry = cast("BandGeometry", artist.geometry)
-    # The arrays are read back from the final polygon, and the input count shows what it dropped.
-    read_back = geometry.band is not None and geometry.inputs is not None
-    return "band" if artist.origin in _BANDS and read_back else None
+def _wedge_pairs(geometry: WedgeGeometry) -> list[tuple[float, float]]:
+    radius = geometry.r
+    return [
+        (geometry.cx - radius, geometry.cy - radius),
+        (geometry.cx + radius, geometry.cy + radius),
+    ]
 
 
-def _text(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    return "text" if artist.origin in _LISTED else None
+def _band_pairs(geometry: BandGeometry) -> list[tuple[float, float]]:
+    return [pair for path in geometry.paths for pair in path]
 
 
-_FAMILIES: Final[dict[str, Callable[[Artist, Axes, int], _Kind]]] = {
-    "Line2D": _line,
-    "PathCollection": _scatter,
-    "Rectangle": _rectangle,
-    "Polygon": _polygon,
-    "Wedge": _wedge,
-    "PolyCollection": _band,
-    "FillBetweenPolyCollection": _band,
-    "Text": _text,
-    "Annotation": _text,
+# Judged family -> how its geometry spans the axes (a reference reads its data dimension alone).
+_PAIRS: dict[str, Callable[[Any], list[tuple[float, float]]]] = {
+    "line": _line_pairs,
+    "scatter": _scatter_pairs,
+    "bar": _rect_pairs,
+    "hist": _rect_pairs,
+    "pie": _wedge_pairs,
+    "band": _band_pairs,
 }
 
 
-def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
-    """An ink-free legend handle the program added to the axes (seaborn's `hue` keys): no
-    plotting origin, a zero-size rectangle or a line holding no point, the handle of an entry of
-    this axes' own legend. It draws nothing, so it is no mark; the legend names a mark through it.
-    """
-    geometry = artist.geometry
-    inkless = (isinstance(geometry, RectGeometry) and geometry.width == geometry.height == 0) or (
-        isinstance(geometry, LineGeometry) and not geometry.x and not geometry.y
-    )
-    entries = axes.legend.entries if axes.legend is not None else ()
-    return (
-        artist.origin is None
-        and inkless
-        and any(entry.axes == index and entry.target == number for entry in entries)
-    )
+def coordinates(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
+    """Every data coordinate the mark draws: what clipping and finiteness read."""
+    if mark.family == "reference":
+        yield from _reference(axes, mark)
+        return
+    for index in mark.artists:
+        artist = axes.artists[index]
+        for x, y in _PAIRS[mark.family](artist.geometry):
+            yield 0, x, artist.site
+            yield 1, y, artist.site
 
 
-def _size_key(artist: Artist) -> bool:
-    """A size key built by hand (`ax.scatter([], [], s=…, label=…)`): no point, one size. It draws
-    nothing, so it is no mark; a legend reads it as a key of the sizes a scatter draws
-    (`legends.py::_sized`).
-    """
-    geometry = cast("ScatterGeometry", artist.geometry)
-    return not geometry.offsets and len(geometry.sizes) == 1
+Edges: TypeAlias = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
 
 
-def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
-    """The family one artist belongs to; `None` = outside the closed set."""
-    read = _FAMILIES.get(artist.cls)
-    return None if read is None else read(artist, axes, index)
+def band_edges(axes: Axes, panel: Panel) -> dict[int, Edges]:
+    """Each GROUNDED band's (x, base edge, far edge): its base is all zero, or exactly the far
+    edge of a grounded band at the same x. Bands that only rest on each other ground nothing."""
+    arrays = {
+        mark.artists[0]: cast(
+            "BandArrays", cast("BandGeometry", axes.artists[mark.artists[0]].geometry).band
+        )
+        for mark in panel.marks
+        if mark.family == "band"
+    }
+    grounded: dict[int, Edges] = {}
+    changed = True
+    while changed:
+        changed = False
+        for index, band in arrays.items():
+            if index in grounded:
+                continue
+            tops = [far for other, (x, _base, far) in grounded.items() if x == band.x]
+            for base, far in ((band.y2, band.y1), (band.y1, band.y2)):
+                if all(value == 0.0 for value in base) or base in tops:
+                    grounded[index] = (band.x, base, far)
+                    changed = True
+                    break
+    return grounded
 
 
-def _outlined(artist: Artist, bands: dict[int, Artist]) -> list[int]:
-    """The bands a plotted line outlines: drawn in data coordinates, point to point, it equals one
-    of their edges (pandas area outlines: stack geometry, not data). Equal arrays drawn in another
-    transform or as steps lie elsewhere.
-
-    `artist` is a judged line and every `bands` value a judged band, so their geometry is known.
-    """
-    line = cast("LineGeometry", artist.geometry)
-    if artist.transform != "data" or line.drawstyle != "default":
-        return []
-    outlined: list[int] = []
-    for number, band in bands.items():
-        arrays = cast("BandArrays", cast("BandGeometry", band.geometry).band)
-        if line.x == arrays.x and line.y in (arrays.y1, arrays.y2):
-            outlined.append(number)
-    return outlined
+def color(axes: Axes, mark: Mark) -> RGB | None:
+    """A series mark's own colour, as a legend handle shows it (RGB; alpha is presentation)."""
+    geometry = axes.artists[mark.artists[0]].geometry
+    if isinstance(geometry, ScatterGeometry):
+        rgba = geometry.colors[0] if geometry.colors else None
+    else:
+        rgba = cast("LineGeometry | RectGeometry | BandGeometry", geometry).color
+    return None if rgba is None else rgba[:3]
 
 
-def _marks(axes: Axes, families: dict[int, Family]) -> list[Mark]:
-    marks: list[Mark] = []
-    for number, container in enumerate(axes.containers):
-        members = tuple(i for i in container.members if families.get(i) in ("bar", "hist"))
-        if members:
-            family: Family = "hist" if container.hist is not None else "bar"
-            horizontal = container.orientation == "horizontal"
-            marks.append(Mark(family, members, container=number, horizontal=horizontal))
-    for number, pie in enumerate(axes.pies):
-        if pie.wedges:
-            marks.append(Mark("pie", pie.wedges, pie=number))
-    for index, family in families.items():
-        if family in ("line", "scatter", "band"):
-            marks.append(Mark(family, (index,)))
-        elif family == "reference":
-            marks.append(
-                Mark(
-                    "reference", (index,), horizontal=_REFERENCES[axes.artists[index].origin or ""]
-                )
-            )
-    return sorted(marks, key=lambda mark: mark.artists[0])
+def label(axes: Axes, mark: Mark) -> str:
+    """The mark's own label: its container's for bars, else its artist's."""
+    if mark.container is not None:
+        return axes.containers[mark.container].label
+    return axes.artists[mark.artists[0]].label
 
 
-def _overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
-    width = min(a[2], b[2]) - max(a[0], b[0])
-    height = min(a[3], b[3]) - max(a[1], b[1])
-    return width > _TOLERANCE and height > _TOLERANCE
-
-
-# What a colorbar draws itself: its colour solids and the dividers between them.
-_COLORBAR_PARTS: Final = frozenset({("QuadMesh", "Axes.pcolormesh"), ("LineCollection", None)})
-
-
-def _check_colorbar(axes: Axes) -> None:
-    """A colorbar holds its own parts alone, and its tick labels name the values they mark."""
-    for artist in axes.artists:
-        if (artist.cls, artist.origin) not in _COLORBAR_PARTS:
-            block("artist_not_judged", artist.site)
-    for name, axis in (("x", axes.x), ("y", axes.y)):
-        if mismatched_tick(axis, key_labels=False) is not None:
-            block("tick_label_mismatch", call_line(axes.calls, f"{name}ticks") or axes.site)
-
-
-def _judged_axes(figure: Figure) -> list[int]:
-    """The judged axes; a colorbar axes passes only as the colorbar of a judged scatter."""
-    judged: list[int] = []
-    for index, axes in enumerate(figure.axes):
-        if axes.cls != "Axes":
-            block("axes_not_judged", axes.site)
-        if axes.colorbar_of is None:
-            judged.append(index)
-            continue
-        owner, artist = axes.colorbar_of
-        mappable = figure.axes[owner].artists[artist]
-        if (mappable.cls, mappable.origin) != ("PathCollection", "Axes.scatter"):
-            block("axes_not_judged", axes.site)
-        _check_colorbar(axes)
-    for position, first in enumerate(judged):
-        for second in judged[position + 1 :]:
-            a, b = figure.axes[first], figure.axes[second]
-            if (second in a.shared_x or second in a.shared_y) and a.position == b.position:
-                block("axes_twin", call_line(a.calls, "twin") or b.site)
-            if _overlap(a.position, b.position):
-                block("axes_overlap", b.site)
-    return judged
-
-
-def _panel(index: int, axes: Axes) -> Panel:
-    families: dict[int, Family] = {}
-    texts: list[str] = []
-    labels: list[str] = []
-    proxies: list[int] = []
-    size_keys: list[int] = []
-    keys = {text for pie in axes.pies for text in pie.texts if text is not None}
-    for number, artist in enumerate(axes.artists):
-        if artist.cls in _RASTER:
-            block("raster_image", artist.site)
-        kind = _family(artist, axes, number)
-        if kind is None and _proxy(artist, axes, index, number):
-            proxies.append(number)
-            continue
-        if kind is None:
-            block("artist_not_judged", artist.site)
-        if kind == "scatter" and _size_key(artist):
-            size_keys.append(number)
-            continue
-        if kind == "text":
-            text = cast("TextGeometry", artist.geometry).text
-            if text.strip():
-                (labels if number in keys else texts).append(text)
-        else:
-            families[number] = kind
-    bands = {i: axes.artists[i] for i, family in families.items() if family == "band"}
-    outlines: list[tuple[int, int]] = []
-    for number in [i for i, family in families.items() if family == "line"]:
-        outlined = _outlined(axes.artists[number], bands)
-        if outlined:
-            del families[number]
-        # A legend entry naming the line names its band (luna F5): the one band whose edge it is,
-        # away from a zero base. A stack's shared edge outlines two bands and names neither.
-        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):
-            outlines.append((number, outlined[0]))
-    marks = _marks(axes, families)
-    if not marks:
-        block("no_data", axes.site)
-    return Panel(
-        index,
-        axes,
-        tuple(marks),
-        tuple(texts),
-        tuple(labels),
-        tuple(proxies),
-        tuple(size_keys),
-        tuple(outlines),
-    )
-
-
-def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:
-    """The one figure's judged panels, or a block naming the first part outside the closed set.
-
-    Precondition: the figure stage passed, so exactly one figure is described.
-    """
-    figure = description.figures[0]
-    for part in figure.others:
-        block("raster_image" if part.cls in _RASTER else "artist_not_judged", part.site)
-    judged = tuple(_panel(index, figure.axes[index]) for index in _judged_axes(figure))
-    if not judged:
-        block("no_data", figure.site)
-    return figure, judged
+def series_marks(panel: Panel) -> list[Mark]:
+    """The marks a legend may name as series: every family but pies and reference marks."""
+    return [mark for mark in panel.marks if mark.family not in ("pie", "reference")]
 '''
 
 _SOURCES["verifier.pysrc.csvread"] = r'''
@@ -5711,181 +5885,709 @@ NOTE_DESCRIPTION: Final = (
 )
 '''
 
-_SOURCES["verifier.figure.shapes"] = r'''
+_SOURCES["verifier.figure.axes_rules"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""What each judged mark draws, read off the reader's geometry: coordinates, bars, bands, colour.
+"""Axes rules over one judged panel (`.claude/rules/figure.md` § Axes rules).
 
-Shared by the axes, mark, legend and value stages, so every stage reads one mark the same way.
-`Mark.horizontal` = the mark's value lies on x (barh, a horizontal hist, an axvline/axvspan).
+Order (`.agent/archive/contracts/m19u3.md` U2): `mark_not_in_data` → `scale_not_linear` →
+`axis_inverted` → `zero_not_in_limits` → `tick_label_mismatch` → `point_clipped`. A truncated bar
+axis reports the zero rule, not the clip it implies; a panel drawing a non-finite coordinate
+reports the marks stage's `value_not_finite`, not the clip autoscale implies. Each block marks the
+program call that set the offending property when the reader recorded one, else the line that drew
+the offending mark.
 """
 
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
-from typing import Any, TypeAlias, cast
+import math
+import re
+import unicodedata
+from typing import Final
+
+from verifier.figure.description import Axes, Axis, Text
+from verifier.figure.parts import Mark, Panel
+from verifier.figure.reasons import block
+from verifier.figure.shapes import coordinates
+from verifier.figure.ticks import labelled, mismatched_tick
+
+_LOG_WORDS: Final = re.compile(r"(?<![a-z])log(?:arithmic)?(?![a-z])")
+_LOG_JA: Final = "対数"
+_MAGNITUDE: Final = frozenset({"bar", "hist", "band"})
+# The data dimension a reference family draws in its blended transform.
+_REFERENCE_TRANSFORMS: Final = {
+    "Axes.axhline": "yaxis",
+    "Axes.axhspan": "yaxis",
+    "Axes.axvline": "xaxis",
+    "Axes.axvspan": "xaxis",
+}
+
+
+def call(axes: Axes, axis: Axis, *slots: str) -> int | None:
+    """The program line of the LATEST call among `slots` (axes calls + `axis-` axis calls): each
+    slot keeps its last call and the reader's clock orders them (display only, ruling 13)."""
+    calls = [(clock, line) for slot, line, clock in axes.calls if slot in slots]
+    calls += [(clock, line) for slot, line, clock in axis.calls if f"axis-{slot}" in slots]
+    return max(calls)[1] if calls else None
+
+
+def view(axis: Axis) -> tuple[float, float]:
+    low, high = axis.view
+    return min(low, high), max(low, high)
+
+
+def value_on_x(mark: Mark) -> bool:
+    """Whether the mark's values lie on x: horizontal bars, hists and vertical references."""
+    return mark.horizontal and mark.family in ("bar", "hist", "reference")
+
+
+def _check_transforms(axes: Axes, panel: Panel) -> None:
+    for mark in panel.marks:
+        for index in mark.artists:
+            artist = axes.artists[index]
+            expected = (
+                _REFERENCE_TRANSFORMS.get(artist.origin or "", "")
+                if mark.family == "reference"
+                else "data"
+            )
+            if artist.transform != expected:
+                block("mark_not_in_data", artist.site)
+
+
+def _names_log(texts: list[Text | None]) -> bool:
+    """R3: the axis label or the panel title names the logarithmic scale."""
+    for text in texts:
+        if text is not None:
+            folded = unicodedata.normalize("NFKC", text.text).casefold()
+            if _LOG_WORDS.search(folded) or _LOG_JA in folded:
+                return True
+    return False
+
+
+def _reordered(axis: Axis, *, keys: bool) -> bool:
+    """Inverting the axis lists text categories in reverse: matplotlib's category axis, or a key
+    axis of numeric slots the program or pandas labelled (pandas' bar charts)."""
+    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))
+
+
+def _check_scales(axes: Axes, panel: Panel) -> None:
+    for name, axis in (("x", axes.x), ("y", axes.y)):
+        stated = axis.scale == "log" and _names_log([axis.label, *axes.titles])
+        if axis.scale != "linear" and not stated:
+            block("scale_not_linear", call(axes, axis, f"{name}scale"))
+    # Inverting a key axis of text categories lists them in reverse, which no rule judges, and
+    # moves no value (user ruling, luna F2: `barh` + `invert_yaxis()`); any other inverted axis
+    # reverses a scale.
+    for (name, axis), keys in zip((("x", axes.x), ("y", axes.y)), key_axes(panel), strict=True):
+        if axis.inverted and not _reordered(axis, keys=keys):
+            block("axis_inverted", call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim"))
+
+
+def _check_zero(axes: Axes, panel: Panel) -> None:
+    """R1: a magnitude mark's value axis shows zero."""
+    for mark in panel.marks:
+        if mark.family in _MAGNITUDE:
+            name, axis = ("x", axes.x) if value_on_x(mark) else ("y", axes.y)
+            low, high = view(axis)
+            if not low <= 0.0 <= high:
+                site = axes.artists[mark.artists[0]].site
+                block("zero_not_in_limits", call(axes, axis, f"{name}lim") or site)
+
+
+def key_axes(panel: Panel) -> tuple[bool, bool]:
+    """(x, y): whether that axis carries keys alone, never a value any mark is read from."""
+    x_value = y_value = x_key = y_key = False
+    for mark in panel.marks:
+        if mark.family == "pie":
+            continue
+        if mark.family == "hist":  # the bins axis carries the measured values, the other counts
+            x_value = y_value = True
+        elif mark.family == "reference":
+            x_value, y_value = x_value or mark.horizontal, y_value or not mark.horizontal
+        elif value_on_x(mark):
+            x_value, y_key = True, True
+        else:
+            x_key, y_value = True, True
+    return x_key and not x_value, y_key and not y_value
+
+
+def _check_ticks(axes: Axes, panel: Panel) -> None:
+    x_keys, y_keys = key_axes(panel)
+    for name, axis, keys in (("x", axes.x, x_keys), ("y", axes.y, y_keys)):
+        if mismatched_tick(axis, key_labels=keys and labelled(axis)) is not None:
+            block("tick_label_mismatch", call(axes, axis, f"{name}ticks", "axis-ticks"))
+
+
+def _check_clipping(axes: Axes, panel: Panel) -> None:
+    # A clip box or path the program set on a mark hides the part of it outside, whatever the
+    # limits (reviewer-1 F2); matplotlib draws wedges unclipped, so they carry none.
+    for mark in panel.marks:
+        for index in mark.artists:
+            if axes.artists[index].clipped:
+                block("point_clipped", axes.artists[index].site)
+    # No limit hides a wedge's share either.
+    found = [
+        coordinate
+        for mark in panel.marks
+        if mark.family != "pie"
+        for coordinate in coordinates(axes, mark)
+    ]
+    # Autoscale skips a non-finite point, so its finite key can sit past the limits: the marks
+    # stage blocks that panel `value_not_finite`, the cause the user can fix (luna F3).
+    if not all(math.isfinite(value) for _, value, _ in found):
+        return
+    views = (view(axes.x), view(axes.y))
+    for dimension, value, site in found:
+        low, high = views[dimension]
+        if not low <= value <= high:
+            name, axis = ("x", axes.x) if dimension == 0 else ("y", axes.y)
+            block("point_clipped", call(axes, axis, f"{name}lim") or site)
+
+
+def check_colorbar(axes: Axes) -> None:
+    """A colorbar's own axes, after every panel's parts + axes: its value axis is never inverted
+    and its tick labels name the values they mark (reviewer-2 F7: the tick check ran inside the
+    parts stage, read the axes' tick slots alone and never read an inversion)."""
+    for name, axis in (("x", axes.x), ("y", axes.y)):
+        if axis.inverted:
+            invert = call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim")
+            block("axis_inverted", invert or axes.site)
+        if mismatched_tick(axis, key_labels=False) is not None:
+            block(
+                "tick_label_mismatch", call(axes, axis, f"{name}ticks", "axis-ticks") or axes.site
+            )
+
+
+def check_axes(panel: Panel) -> None:
+    axes = panel.axes
+    _check_transforms(axes, panel)
+    _check_scales(axes, panel)
+    _check_zero(axes, panel)
+    _check_ticks(axes, panel)
+    _check_clipping(axes, panel)
+'''
+
+_SOURCES["verifier.figure.legends"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Legend ↔ artists (`legend_mismatch`), each series' displayed name, and each encoding key.
+
+An entry names a judged mark by handle (the artist or container itself, in any axes of the
+figure), or as a proxy by a mark's own label + colour (an axes legend: in its axes; a figure
+legend: anywhere), or through an ink-free proxy its axes holds (seaborn's `hue` keys) by colour
+alone, naming the one unlabelled series mark of that colour. A `legend_elements` key names no
+series: it explains its collection's sizes or colours. With ≥ 2 series (lines, points, bars,
+areas) in a legended axes, every one is named; pies and reference marks may stay unnamed.
+"""
+
+from dataclasses import dataclass, field
+from typing import TypeAlias, cast
+
+from verifier.figure.description import (
+    Legend,
+    LegendEntry,
+    LineGeometry,
+    RectGeometry,
+    ScatterGeometry,
+)
+from verifier.figure.parts import Mark, Panel
+from verifier.figure.reasons import block
+from verifier.figure.request import read_request
+from verifier.figure.shapes import RGB, color, label, series_marks
+
+Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
+
+
+@dataclass(frozen=True, slots=True)
+class Legends:
+    """What the figure's legends say: the names of drawn marks, and the encodings they explain."""
+
+    names: Names = field(default_factory=dict)
+    # (figure axes index, scatter artist, "sizes" | "colors")
+    encodings: frozenset[tuple[int, int, str]] = frozenset()
+
+
+_Candidate: TypeAlias = tuple[
+    int, Mark, str, RGB | None
+]  # (panel position, mark, own label, colour)
+
+
+def _candidates(panels: tuple[Panel, ...], positions: list[int]) -> list[_Candidate]:
+    return [
+        (position, mark, label(panels[position].axes, mark), color(panels[position].axes, mark))
+        for position in positions
+        for mark in panels[position].marks
+        if mark.family != "pie"
+    ]
+
+
+def _handle(
+    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
+) -> tuple[int, int] | None:
+    """(panel position, named artist) of a handle the reader found drawn, if it is judged."""
+    position = by_axes.get(entry.axes) if entry.axes is not None else None
+    if position is None:
+        return None
+    panel = panels[position]
+    for mark in panel.marks:
+        if entry.target is not None and entry.target in mark.artists:
+            # A series is named once, by its first artist: two bars of one container are one
+            # name (reviewer-2 F3). A pie names each wedge.
+            return position, entry.target if mark.family == "pie" else mark.artists[0]
+        if entry.container is not None and mark.container == entry.container:
+            return position, mark.artists[0]
+    if entry.target is not None and entry.target in panel.proxies:
+        return _proxied(position, panel, entry.target)
+    bands = [band for line, band in panel.outlines if line == entry.target]
+    return (position, bands[0]) if bands else None
+
+
+def _hidden(text: str) -> bool:
+    """matplotlib shows no legend entry for an empty label or one opening with `_`."""
+    return not text or text.startswith("_")
+
+
+def _proxied(position: int, panel: Panel, proxy: int) -> tuple[int, int] | None:
+    """The one series mark of the panel with no shown label of its own and the proxy's colour."""
+    rgb = cast("LineGeometry | RectGeometry", panel.axes.artists[proxy].geometry).color[:3]
+    matches = [
+        mark.artists[0]
+        for mark in series_marks(panel)
+        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))
+    ]
+    return (position, matches[0]) if len(matches) == 1 else None
+
+
+def _proxy(entry: LegendEntry, candidates: list[_Candidate]) -> tuple[int, int] | None:
+    rgb = None if entry.proxy_color is None else entry.proxy_color[:3]
+    matches = [
+        (position, mark.artists[0])
+        for position, mark, own_label, own in candidates
+        if rgb is not None and own_label == entry.text and own == rgb
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _encoding(
+    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
+) -> tuple[int, int, str] | None:
+    keyed = entry.elements_of
+    if keyed is None or keyed[0] is None or entry.axes is None or entry.axes not in by_axes:
+        return None
+    panel = panels[by_axes[entry.axes]]
+    if not any(m.family == "scatter" and m.artists[0] == keyed[0] for m in panel.marks):
+        return None
+    return entry.axes, keyed[0], keyed[1]
+
+
+def _size_key_panel(
+    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
+) -> Panel | None:
+    """The panel whose hand-built size key is this entry's handle, if it is one."""
+    position = by_axes.get(entry.axes) if entry.axes is not None else None
+    if position is None or entry.target not in panels[position].size_keys:
+        return None
+    return panels[position]
+
+
+def _sized(entry: LegendEntry, panel: Panel) -> tuple[int, int, str] | None:
+    """A hand-built size key explains the sizes of the one scatter of its panel that draws its
+    size, when its label types one number, that size (sizes are drawn values, R8)."""
+    artists = panel.axes.artists
+    size = cast("ScatterGeometry", artists[cast("int", entry.target)].geometry).sizes[0]
+    drawing = [
+        mark.artists[0]
+        for mark in panel.marks
+        if mark.family == "scatter"
+        and size in cast("ScatterGeometry", artists[mark.artists[0]].geometry).sizes
+    ]
+    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):
+        return None
+    return panel.index, drawing[0], "sizes"
+
+
+def _read(
+    legend: Legend,
+    panels: tuple[Panel, ...],
+    by_axes: dict[int, int],
+    candidates: list[_Candidate],
+) -> tuple[Names, set[tuple[int, int, str]]]:
+    names: Names = {}
+    encodings: set[tuple[int, int, str]] = set()
+    for entry in legend.entries:
+        keyed = _size_key_panel(entry, panels, by_axes)
+        if entry.elements_of is not None or keyed is not None:
+            encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
+            # A legend draws each key marker at its `markerscale`: a size key at another scale
+            # shows a size its points do not draw.
+            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):
+                block("legend_mismatch", legend.site)
+            encodings.add(encoding)
+            continue
+        named = (
+            _handle(entry, panels, by_axes)
+            if entry.target is not None or entry.container is not None
+            else _proxy(entry, candidates)
+        )
+        if named is None or named in names:
+            block("legend_mismatch", legend.site)
+        names[named] = entry.text
+    return names, encodings
+
+
+def _merge(names: Names, found: Names, legend: Legend) -> None:
+    """A series takes ONE name: another legend naming it otherwise is a mismatch (reviewer-2 F2:
+    an axes legend + a figure legend, or two figure legends, merged with the last name winning)."""
+    for mark, text in found.items():
+        if names.get(mark, text) != text:
+            block("legend_mismatch", legend.site)
+    names |= found
+
+
+def read_legends(panels: tuple[Panel, ...], figure_legends: tuple[Legend, ...]) -> Legends:
+    by_axes = {panel.index: position for position, panel in enumerate(panels)}
+    names: Names = {}
+    encodings: set[tuple[int, int, str]] = set()
+    for position, panel in enumerate(panels):
+        legend = panel.axes.legend
+        if legend is None:
+            continue
+        found, keys = _read(legend, panels, by_axes, _candidates(panels, [position]))
+        _merge(names, found, legend)
+        encodings |= keys
+        series = series_marks(panel)
+        named = [mark for mark in series if (position, mark.artists[0]) in found]
+        if named and len(series) >= 2 and len(named) != len(series):  # noqa: PLR2004
+            block("legend_mismatch", legend.site)
+    everywhere = _candidates(panels, list(range(len(panels))))
+    for legend in figure_legends:
+        found, keys = _read(legend, panels, by_axes, everywhere)
+        _merge(names, found, legend)
+        encodings |= keys
+    return Legends(names, frozenset(encodings))
+'''
+
+_SOURCES["verifier.figure.mark_rules"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Mark rules over one judged panel (`.claude/rules/figure.md` § Mark rules).
+
+Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_finite` → bars
+(`bar_not_from_zero`, `bars_overlap`, `bar_width_varies`) → `x_not_ordered` → `hist_counts` →
+`pie_not_whole` →
+`area_not_from_zero` → scatter encodings. Each block marks the line that drew the offending mark.
+"""
+
+import itertools
+import math
+from typing import Final, TypeVar, cast
 
 from verifier.figure.description import (
     Axes,
-    BandArrays,
     BandGeometry,
+    Geometry,
+    HistRecord,
     LineGeometry,
+    PieRecord,
     PolygonGeometry,
     RectGeometry,
     ScatterGeometry,
     WedgeGeometry,
 )
 from verifier.figure.parts import Mark, Panel
+from verifier.figure.reasons import block
+from verifier.figure.shapes import Bar, band_edges, bars, coordinates
 
-Coordinate: TypeAlias = tuple[
-    int, float, int | None
-]  # (dimension 0 = x / 1 = y, value, artist line)
-RGB: TypeAlias = tuple[float, float, float]
+_T = TypeVar("_T")
 
-
-@dataclass(frozen=True, slots=True)
-class Bar:
-    """One bar read by orientation: where it sits on the key axis and how far it reaches."""
-
-    index: int
-    key: float  # start on the key axis
-    thickness: float
-    base: float
-    extent: float  # signed length along the value axis
-
-    @property
-    def center(self) -> float:
-        return self.key + self.thickness / 2
-
-    @property
-    def end(self) -> float:
-        return self.base + self.extent
+_TOLERANCE: Final = 1e-9
+_ULPS: Final = 64
+# matplotlib computes wedge angles in float32 (`np.asarray(x, np.float32)` in `Axes.pie`).
+_PIE_DEGREES: Final = 1e-4
 
 
-def bars(axes: Axes, mark: Mark) -> list[Bar]:
-    """The mark's rectangles, by orientation; a bar or hist mark holds rectangles alone."""
-    found: list[Bar] = []
-    for index in mark.artists:
-        rect = cast("RectGeometry", axes.artists[index].geometry)
-        if mark.horizontal:
-            found.append(Bar(index, rect.y, rect.height, rect.x, rect.width))
-        else:
-            found.append(Bar(index, rect.x, rect.width, rect.y, rect.height))
-    return found
+def _site(axes: Axes, mark: Mark) -> int | None:
+    return axes.artists[mark.artists[0]].site
 
 
-def _reference(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
-    """A reference mark's data coordinates, on its data dimension alone."""
-    artist = axes.artists[mark.artists[0]]
-    dimension = 0 if mark.horizontal else 1
-    geometry = artist.geometry
-    if isinstance(geometry, LineGeometry):
-        values = geometry.x if dimension == 0 else geometry.y
-        yield from ((dimension, value, artist.site) for value in values)
-    elif isinstance(geometry, RectGeometry):
-        start = geometry.x if dimension == 0 else geometry.y
-        extent = geometry.width if dimension == 0 else geometry.height
-        yield dimension, start, artist.site
-        yield dimension, start + extent, artist.site
-    else:  # matplotlib 3.8 (the sandbox) draws a span as a Polygon
-        polygon = cast("PolygonGeometry", geometry)
-        yield from ((dimension, pair[dimension], artist.site) for pair in polygon.xy)
+def _slack(*coordinates: float, size: float) -> float:
+    """What float error alone can move a coordinate by: a few ulps at its magnitude, or a
+    billionth of the part's own size. A slack scaled by the magnitude alone let bars at 1e12
+    overlap by half their width (reviewer-2 F1)."""
+    return max(_ULPS * math.ulp(max(abs(value) for value in coordinates)), _TOLERANCE * size)
 
 
-def _line_pairs(geometry: LineGeometry) -> list[tuple[float, float]]:
-    return list(zip(geometry.x, geometry.y, strict=True))
-
-
-def _scatter_pairs(geometry: ScatterGeometry) -> list[tuple[float, float]]:
-    return list(geometry.offsets)
-
-
-def _rect_pairs(geometry: RectGeometry) -> list[tuple[float, float]]:
-    return [(geometry.x, geometry.y), (geometry.x + geometry.width, geometry.y + geometry.height)]
-
-
-def _wedge_pairs(geometry: WedgeGeometry) -> list[tuple[float, float]]:
-    radius = geometry.r
-    return [
-        (geometry.cx - radius, geometry.cy - radius),
-        (geometry.cx + radius, geometry.cy + radius),
-    ]
-
-
-def _band_pairs(geometry: BandGeometry) -> list[tuple[float, float]]:
-    return [pair for path in geometry.paths for pair in path]
-
-
-# Judged family -> how its geometry spans the axes (a reference reads its data dimension alone).
-_PAIRS: dict[str, Callable[[Any], list[tuple[float, float]]]] = {
-    "line": _line_pairs,
-    "scatter": _scatter_pairs,
-    "bar": _rect_pairs,
-    "hist": _rect_pairs,
-    "pie": _wedge_pairs,
-    "band": _band_pairs,
-}
-
-
-def coordinates(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
-    """Every data coordinate the mark draws: what clipping and finiteness read."""
-    if mark.family == "reference":
-        yield from _reference(axes, mark)
-        return
-    for index in mark.artists:
-        artist = axes.artists[index]
-        for x, y in _PAIRS[mark.family](artist.geometry):
-            yield 0, x, artist.site
-            yield 1, y, artist.site
-
-
-Edges: TypeAlias = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
-
-
-def band_edges(axes: Axes, panel: Panel) -> dict[int, Edges]:
-    """Each GROUNDED band's (x, base edge, far edge): its base is all zero, or exactly the far
-    edge of a grounded band at the same x. Bands that only rest on each other ground nothing."""
-    arrays = {
-        mark.artists[0]: cast(
-            "BandArrays", cast("BandGeometry", axes.artists[mark.artists[0]].geometry).band
-        )
-        for mark in panel.marks
-        if mark.family == "band"
-    }
-    grounded: dict[int, Edges] = {}
-    changed = True
-    while changed:
-        changed = False
-        for index, band in arrays.items():
-            if index in grounded:
-                continue
-            tops = [far for other, (x, _base, far) in grounded.items() if x == band.x]
-            for base, far in ((band.y2, band.y1), (band.y1, band.y2)):
-                if all(value == 0.0 for value in base) or base in tops:
-                    grounded[index] = (band.x, base, far)
-                    changed = True
-                    break
-    return grounded
-
-
-def color(axes: Axes, mark: Mark) -> RGB | None:
-    """A series mark's own colour, as a legend handle shows it (RGB; alpha is presentation)."""
-    geometry = axes.artists[mark.artists[0]].geometry
-    if isinstance(geometry, ScatterGeometry):
-        rgba = geometry.colors[0] if geometry.colors else None
-    else:
-        rgba = cast("LineGeometry | RectGeometry | BandGeometry", geometry).color
-    return None if rgba is None else rgba[:3]
-
-
-def label(axes: Axes, mark: Mark) -> str:
-    """The mark's own label: its container's for bars, else its artist's."""
+def _record_values(axes: Axes, mark: Mark) -> list[float]:
+    """Inputs a mark received besides its geometry: hist inputs + edges, pie values."""
     if mark.container is not None:
-        return axes.containers[mark.container].label
-    return axes.artists[mark.artists[0]].label
+        record = axes.containers[mark.container].hist
+        return [] if record is None else [*record.values, *record.bins]
+    return [] if mark.pie is None else list(axes.pies[mark.pie].values)
 
 
-def series_marks(panel: Panel) -> list[Mark]:
-    """The marks a legend may name as series: every family but pies and reference marks."""
-    return [mark for mark in panel.marks if mark.family not in ("pie", "reference")]
+_NO_LINE: Final = frozenset({"None", "none", "", " "})
+_SEGMENT: Final = 2  # points a stroke needs
+
+
+def _clear(rgba: tuple[float, ...] | None) -> bool:
+    return rgba is None or rgba[3] == 0.0
+
+
+def _cycled(values: tuple[_T, ...], index: int) -> _T | None:
+    """matplotlib cycles a collection's per-point properties over its points."""
+    return values[index % len(values)] if values else None
+
+
+def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
+    """Whether scatter point `index` draws any ink: a size above zero, and a visible face or a
+    visible edge of nonzero width."""
+    face = _cycled(geometry.colors, index)
+    edge = _cycled(geometry.edges, index)
+    width = _cycled(geometry.linewidths, index)
+    return bool(_cycled(geometry.sizes, index)) and (
+        (face is not None and not _clear(face))
+        or (edge is not None and not _clear(edge) and bool(width))
+    )
+
+
+def _line_ink(geometry: LineGeometry) -> bool:
+    """A line draws a stroke: a style, a width, a colour, two points, and dashes with ink."""
+    return not (
+        geometry.linestyle in _NO_LINE
+        or geometry.linewidth == 0.0
+        or _clear(geometry.color)
+        or len(geometry.x) < _SEGMENT
+        or geometry.dash_on == 0.0
+    )
+
+
+def _marker_ink(geometry: LineGeometry) -> bool:
+    """A line's markers draw: a marker of some size, its face (a filled marker) or its edge."""
+    return not (
+        geometry.marker in _NO_LINE
+        or geometry.markersize == 0.0
+        or (
+            (not geometry.marker_filled or _clear(geometry.marker_face))
+            and (_clear(geometry.marker_edge) or geometry.marker_edge_width == 0.0)
+        )
+    )
+
+
+def _no_ink(geometry: Geometry) -> bool:
+    """The artist's final styling draws nothing (or, a line, leaves points unshown): transparent,
+    no stroke and no marker, zero size, an empty marker path; markers on a chosen subset of a line
+    that draws no stroke hide the rest of its points (reviewer-1 F3, reviewer-2 F3)."""
+    if isinstance(geometry, LineGeometry):
+        if _line_ink(geometry):
+            return False
+        return not _marker_ink(geometry) or geometry.markevery
+    if isinstance(geometry, ScatterGeometry):
+        return geometry.marker_segments == 0 or any(
+            not _point_ink(geometry, index) for index in range(len(geometry.offsets))
+        )
+    patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
+    return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
+
+
+def _check_drawn(axes: Axes, panel: Panel) -> None:
+    """What a mark receives but does not show: a hidden panel or artist, a non-finite value."""
+    if not axes.visible:
+        block("mark_hidden", axes.site)
+    for mark in panel.marks:
+        for index in mark.artists:
+            artist = axes.artists[index]
+            if not artist.visible or artist.alpha == 0.0 or _no_ink(artist.geometry):
+                block("mark_hidden", artist.site)
+        if mark.family == "bar":  # a bar of zero thickness shows no area (reviewer-2 F3)
+            for bar in bars(axes, mark):
+                if bar.thickness == 0.0:
+                    block("mark_hidden", axes.artists[bar.index].site)
+    for mark in panel.marks:
+        values = [value for _, value, _ in coordinates(axes, mark)] + _record_values(axes, mark)
+        geometry = axes.artists[mark.artists[0]].geometry
+        dropped = (
+            isinstance(geometry, BandGeometry)
+            and geometry.band is not None
+            and geometry.inputs != len(geometry.band.x)
+        )
+        if dropped or not all(math.isfinite(value) for value in values):
+            block("value_not_finite", _site(axes, mark))
+
+
+def _stacked(bar: Bar, every: list[tuple[bool, Bar]], *, horizontal: bool) -> bool:
+    """G1 for a bar off zero: it continues another bar at its position, on the same side of 0."""
+    same_side = bar.extent == 0.0 or (bar.extent > 0.0) == (bar.base > 0.0)
+    return same_side and any(
+        other.index != bar.index
+        and other_horizontal == horizontal
+        and (other.key, other.thickness) == (bar.key, bar.thickness)
+        and other.end == bar.base
+        for other_horizontal, other in every
+    )
+
+
+def _check_bars(axes: Axes, panel: Panel) -> None:
+    every = [
+        (mark.horizontal, bar)
+        for mark in panel.marks
+        if mark.family in ("bar", "hist")
+        for bar in bars(axes, mark)
+    ]
+    for horizontal, bar in every:
+        if bar.base != 0.0 and not _stacked(bar, every, horizontal=horizontal):
+            block("bar_not_from_zero", axes.artists[bar.index].site)
+    boxes = sorted(
+        (*_box(cast("RectGeometry", axes.artists[bar.index].geometry)), bar.index)
+        for _, bar in every
+    )
+    for position, (x0, x1, y0, y1, index) in enumerate(boxes):
+        for other_x0, other_x1, other_y0, other_y1, other in boxes[position + 1 :]:
+            if other_x0 >= x1 - _slack(x1, other_x0, size=x1 - x0):
+                break
+            width = min(x1, other_x1) - other_x0
+            height = min(y1, other_y1) - max(y0, other_y0)
+            if width > _slack(
+                x0, x1, other_x0, other_x1, size=min(x1 - x0, other_x1 - other_x0)
+            ) and height > _slack(
+                y0, y1, other_y0, other_y1, size=min(y1 - y0, other_y1 - other_y0)
+            ):
+                block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar
+
+
+def _check_widths(axes: Axes, panel: Panel) -> None:
+    """The bars of one series share one thickness: an area that varies with it shows a second
+    quantity no key explains (user ruling, luna F6). A histogram's widths are its bins, which
+    `hist_counts` reads."""
+    for mark in panel.marks:
+        if mark.family == "bar":
+            first, *rest = (bar.thickness for bar in bars(axes, mark))
+            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):
+                block("bar_width_varies", _site(axes, mark))
+
+
+def _box(rect: RectGeometry) -> tuple[float, float, float, float]:
+    """A drawn rectangle in data x/y, whatever its orientation."""
+    return (
+        min(rect.x, rect.x + rect.width),
+        max(rect.x, rect.x + rect.width),
+        min(rect.y, rect.y + rect.height),
+        max(rect.y, rect.y + rect.height),
+    )
+
+
+def _check_order(axes: Axes, panel: Panel) -> None:
+    """G9 / ruling 3: a line runs monotone in x, either way."""
+    for mark in panel.marks:
+        geometry = axes.artists[mark.artists[0]].geometry
+        if mark.family == "line" and isinstance(geometry, LineGeometry):
+            steps = [b - a for a, b in itertools.pairwise(geometry.x)]
+            if any(step < 0 for step in steps) and any(step > 0 for step in steps):
+                block("x_not_ordered", _site(axes, mark))
+
+
+def _counts(record: HistRecord) -> list[int] | None:
+    """numpy's histogram over the drawn edges (last bin closed); None when an input falls out."""
+    bins = record.bins
+    counts = [0] * (len(bins) - 1)
+    for value in record.values:
+        if not bins[0] <= value <= bins[-1]:
+            return None
+        index = next(i for i in range(len(counts)) if value < bins[i + 1] or i == len(counts) - 1)
+        counts[index] += 1
+    return counts
+
+
+def _hist_ok(axes: Axes, mark: Mark, record: HistRecord) -> bool:
+    bins = record.bins
+    plain = record.histtype == "bar" and record.datasets == 1
+    if not plain or record.weighted or record.cumulative or len(bins) != len(mark.artists) + 1:
+        return False
+    if any(b <= a for a, b in itertools.pairwise(bins)):
+        return False
+    counts = _counts(record)
+    if counts is None:  # R2: an input the drawn bins leave out
+        return False
+    total = sum(counts)
+    for position, bar in enumerate(bars(axes, mark)):
+        low, high = bins[position], bins[position + 1]
+        width = high - low
+        count = counts[position]
+        expected = (count / width) / total if record.density else float(count)
+        if not (
+            abs(bar.center - (low + high) / 2) <= _slack(low, high, size=width)
+            and bar.thickness <= width * (1 + _TOLERANCE)
+            and bar.extent == expected
+        ):
+            return False
+    return True
+
+
+def _check_hist(axes: Axes, mark: Mark) -> None:
+    record = cast("HistRecord", axes.containers[cast("int", mark.container)].hist)
+    if not _hist_ok(axes, mark, record):
+        block("hist_counts", _site(axes, mark))
+
+
+def _pie_ok(record: PieRecord, wedges: list[WedgeGeometry]) -> bool:
+    total = sum(record.values)
+    if len(wedges) != len(record.values) or total <= 0.0:
+        return False  # a partial pie (`normalize=False`, total < 1) fails the 360° sum below
+    if len({(wedge.r, wedge.width) for wedge in wedges}) != 1:
+        return False
+    shares = [value / total if record.normalize else value for value in record.values]
+    arcs = sorted(
+        (wedge.theta1, wedge.theta2, share) for wedge, share in zip(wedges, shares, strict=True)
+    )
+    for (start, end, share), following in itertools.zip_longest(arcs, arcs[1:]):
+        if abs((end - start) - 360.0 * share) > _PIE_DEGREES:
+            return False
+        if following is not None and abs(following[0] - end) > _PIE_DEGREES:
+            return False
+    return abs((arcs[-1][1] - arcs[0][0]) - 360.0) <= _PIE_DEGREES
+
+
+def _check_pie(axes: Axes, mark: Mark) -> None:
+    wedges = [cast("WedgeGeometry", axes.artists[i].geometry) for i in mark.artists]
+    if not _pie_ok(axes.pies[cast("int", mark.pie)], wedges):
+        block("pie_not_whole", _site(axes, mark))
+
+
+def _check_scatter(
+    axes: Axes, mark: Mark, explained: frozenset[tuple[str, ...]], *, colorbar: bool
+) -> None:
+    """Varying sizes need a size key of this collection; colours, a colorbar or colour key."""
+    geometry = cast("ScatterGeometry", axes.artists[mark.artists[0]].geometry)
+    if len(set(geometry.sizes)) > 1 and ("sizes",) not in explained:
+        block("marker_size_varies", _site(axes, mark))
+    if len(set(geometry.colors)) > 1 and ("colors",) not in explained and not colorbar:
+        block("marker_color_varies", _site(axes, mark))
+
+
+def check_marks(
+    panel: Panel,
+    colorbars: set[tuple[int, int]],
+    encodings: frozenset[tuple[int, int, str]],
+) -> None:
+    """`colorbars` = (axes, artist) pairs a colorbar is linked to; `encodings` = (axes, artist,
+    prop) a legend key explains."""
+    axes = panel.axes
+    grounded = band_edges(axes, panel)
+    _check_drawn(axes, panel)
+    _check_bars(axes, panel)
+    _check_widths(axes, panel)
+    _check_order(axes, panel)
+    for mark in panel.marks:
+        if mark.family == "hist":
+            _check_hist(axes, mark)
+        elif mark.family == "pie":
+            _check_pie(axes, mark)
+        elif mark.family == "band" and mark.artists[0] not in grounded:
+            block("area_not_from_zero", _site(axes, mark))
+        elif mark.family == "scatter":
+            index = mark.artists[0]
+            explained = frozenset(
+                (prop,)
+                for owner, artist, prop in encodings
+                if (owner, artist) == (panel.index, index)
+            )
+            linked = cast("ScatterGeometry", axes.artists[index].geometry).colorbar
+            colorbar = linked and (panel.index, index) in colorbars
+            _check_scatter(axes, mark, explained, colorbar=colorbar)
 '''
 
 _SOURCES["verifier.figure.sources"] = r'''
@@ -6441,697 +7143,6 @@ def excerpts(
             if check in rows:
                 rows[check] |= prepared
     return tuple((check, frozenset(lines)) for check, lines in rows.items() if lines)
-'''
-
-_SOURCES["verifier.figure.axes_rules"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Axes rules over one judged panel (`.claude/rules/figure.md` § Axes rules).
-
-Order (`.agent/archive/contracts/m19u3.md` U2): `mark_not_in_data` → `scale_not_linear` →
-`axis_inverted` → `zero_not_in_limits` → `tick_label_mismatch` → `point_clipped`. A truncated bar
-axis reports the zero rule, not the clip it implies; a panel drawing a non-finite coordinate
-reports the marks stage's `value_not_finite`, not the clip autoscale implies. Each block marks the
-program call that set the offending property when the reader recorded one, else the line that drew
-the offending mark.
-"""
-
-import math
-import re
-import unicodedata
-from typing import Final
-
-from verifier.figure.description import Axes, Axis, Text
-from verifier.figure.parts import Mark, Panel
-from verifier.figure.reasons import block
-from verifier.figure.shapes import coordinates
-from verifier.figure.ticks import labelled, mismatched_tick
-
-_LOG_WORDS: Final = re.compile(r"(?<![a-z])log(?:arithmic)?(?![a-z])")
-_LOG_JA: Final = "対数"
-_MAGNITUDE: Final = frozenset({"bar", "hist", "band"})
-# The data dimension a reference family draws in its blended transform.
-_REFERENCE_TRANSFORMS: Final = {
-    "Axes.axhline": "yaxis",
-    "Axes.axhspan": "yaxis",
-    "Axes.axvline": "xaxis",
-    "Axes.axvspan": "xaxis",
-}
-
-
-def call(axes: Axes, axis: Axis, *slots: str) -> int | None:
-    """The program line of the LATEST call among `slots` (axes calls + `axis-` axis calls): each
-    slot keeps its last call and the reader's clock orders them (display only, ruling 13)."""
-    calls = [(clock, line) for slot, line, clock in axes.calls if slot in slots]
-    calls += [(clock, line) for slot, line, clock in axis.calls if f"axis-{slot}" in slots]
-    return max(calls)[1] if calls else None
-
-
-def view(axis: Axis) -> tuple[float, float]:
-    low, high = axis.view
-    return min(low, high), max(low, high)
-
-
-def value_on_x(mark: Mark) -> bool:
-    """Whether the mark's values lie on x: horizontal bars, hists and vertical references."""
-    return mark.horizontal and mark.family in ("bar", "hist", "reference")
-
-
-def _check_transforms(axes: Axes, panel: Panel) -> None:
-    for mark in panel.marks:
-        for index in mark.artists:
-            artist = axes.artists[index]
-            expected = (
-                _REFERENCE_TRANSFORMS.get(artist.origin or "", "")
-                if mark.family == "reference"
-                else "data"
-            )
-            if artist.transform != expected:
-                block("mark_not_in_data", artist.site)
-
-
-def _names_log(texts: list[Text | None]) -> bool:
-    """R3: the axis label or the panel title names the logarithmic scale."""
-    for text in texts:
-        if text is not None:
-            folded = unicodedata.normalize("NFKC", text.text).casefold()
-            if _LOG_WORDS.search(folded) or _LOG_JA in folded:
-                return True
-    return False
-
-
-def _reordered(axis: Axis, *, keys: bool) -> bool:
-    """Inverting the axis lists text categories in reverse: matplotlib's category axis, or a key
-    axis of numeric slots the program or pandas labelled (pandas' bar charts)."""
-    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))
-
-
-def _check_scales(axes: Axes, panel: Panel) -> None:
-    for name, axis in (("x", axes.x), ("y", axes.y)):
-        stated = axis.scale == "log" and _names_log([axis.label, *axes.titles])
-        if axis.scale != "linear" and not stated:
-            block("scale_not_linear", call(axes, axis, f"{name}scale"))
-    # Inverting a key axis of text categories lists them in reverse, which no rule judges, and
-    # moves no value (user ruling, luna F2: `barh` + `invert_yaxis()`); any other inverted axis
-    # reverses a scale.
-    for (name, axis), keys in zip((("x", axes.x), ("y", axes.y)), key_axes(panel), strict=True):
-        if axis.inverted and not _reordered(axis, keys=keys):
-            block("axis_inverted", call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim"))
-
-
-def _check_zero(axes: Axes, panel: Panel) -> None:
-    """R1: a magnitude mark's value axis shows zero."""
-    for mark in panel.marks:
-        if mark.family in _MAGNITUDE:
-            name, axis = ("x", axes.x) if value_on_x(mark) else ("y", axes.y)
-            low, high = view(axis)
-            if not low <= 0.0 <= high:
-                site = axes.artists[mark.artists[0]].site
-                block("zero_not_in_limits", call(axes, axis, f"{name}lim") or site)
-
-
-def key_axes(panel: Panel) -> tuple[bool, bool]:
-    """(x, y): whether that axis carries keys alone, never a value any mark is read from."""
-    x_value = y_value = x_key = y_key = False
-    for mark in panel.marks:
-        if mark.family == "pie":
-            continue
-        if mark.family == "hist":  # the bins axis carries the measured values, the other counts
-            x_value = y_value = True
-        elif mark.family == "reference":
-            x_value, y_value = x_value or mark.horizontal, y_value or not mark.horizontal
-        elif value_on_x(mark):
-            x_value, y_key = True, True
-        else:
-            x_key, y_value = True, True
-    return x_key and not x_value, y_key and not y_value
-
-
-def _check_ticks(axes: Axes, panel: Panel) -> None:
-    x_keys, y_keys = key_axes(panel)
-    for name, axis, keys in (("x", axes.x, x_keys), ("y", axes.y, y_keys)):
-        if mismatched_tick(axis, key_labels=keys and labelled(axis)) is not None:
-            block("tick_label_mismatch", call(axes, axis, f"{name}ticks", "axis-ticks"))
-
-
-def _check_clipping(axes: Axes, panel: Panel) -> None:
-    # A clip box or path the program set on a mark hides the part of it outside, whatever the
-    # limits (reviewer-1 F2); matplotlib draws wedges unclipped, so they carry none.
-    for mark in panel.marks:
-        for index in mark.artists:
-            if axes.artists[index].clipped:
-                block("point_clipped", axes.artists[index].site)
-    # No limit hides a wedge's share either.
-    found = [
-        coordinate
-        for mark in panel.marks
-        if mark.family != "pie"
-        for coordinate in coordinates(axes, mark)
-    ]
-    # Autoscale skips a non-finite point, so its finite key can sit past the limits: the marks
-    # stage blocks that panel `value_not_finite`, the cause the user can fix (luna F3).
-    if not all(math.isfinite(value) for _, value, _ in found):
-        return
-    views = (view(axes.x), view(axes.y))
-    for dimension, value, site in found:
-        low, high = views[dimension]
-        if not low <= value <= high:
-            name, axis = ("x", axes.x) if dimension == 0 else ("y", axes.y)
-            block("point_clipped", call(axes, axis, f"{name}lim") or site)
-
-
-def check_axes(panel: Panel) -> None:
-    axes = panel.axes
-    _check_transforms(axes, panel)
-    _check_scales(axes, panel)
-    _check_zero(axes, panel)
-    _check_ticks(axes, panel)
-    _check_clipping(axes, panel)
-'''
-
-_SOURCES["verifier.figure.legends"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Legend ↔ artists (`legend_mismatch`), each series' displayed name, and each encoding key.
-
-An entry names a judged mark by handle (the artist or container itself, in any axes of the
-figure), or as a proxy by a mark's own label + colour (an axes legend: in its axes; a figure
-legend: anywhere), or through an ink-free proxy its axes holds (seaborn's `hue` keys) by colour
-alone, naming the one unlabelled series mark of that colour. A `legend_elements` key names no
-series: it explains its collection's sizes or colours. With ≥ 2 series (lines, points, bars,
-areas) in a legended axes, every one is named; pies and reference marks may stay unnamed.
-"""
-
-from dataclasses import dataclass, field
-from typing import TypeAlias, cast
-
-from verifier.figure.description import (
-    Legend,
-    LegendEntry,
-    LineGeometry,
-    RectGeometry,
-    ScatterGeometry,
-)
-from verifier.figure.parts import Mark, Panel
-from verifier.figure.reasons import block
-from verifier.figure.request import read_request
-from verifier.figure.shapes import RGB, color, label, series_marks
-
-Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
-
-
-@dataclass(frozen=True, slots=True)
-class Legends:
-    """What the figure's legends say: the names of drawn marks, and the encodings they explain."""
-
-    names: Names = field(default_factory=dict)
-    # (figure axes index, scatter artist, "sizes" | "colors")
-    encodings: frozenset[tuple[int, int, str]] = frozenset()
-
-
-_Candidate: TypeAlias = tuple[
-    int, Mark, str, RGB | None
-]  # (panel position, mark, own label, colour)
-
-
-def _candidates(panels: tuple[Panel, ...], positions: list[int]) -> list[_Candidate]:
-    return [
-        (position, mark, label(panels[position].axes, mark), color(panels[position].axes, mark))
-        for position in positions
-        for mark in panels[position].marks
-        if mark.family != "pie"
-    ]
-
-
-def _handle(
-    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
-) -> tuple[int, int] | None:
-    """(panel position, named artist) of a handle the reader found drawn, if it is judged."""
-    position = by_axes.get(entry.axes) if entry.axes is not None else None
-    if position is None:
-        return None
-    panel = panels[position]
-    for mark in panel.marks:
-        if entry.target is not None and entry.target in mark.artists:
-            # A series is named once, by its first artist: two bars of one container are one
-            # name (reviewer-2 F3). A pie names each wedge.
-            return position, entry.target if mark.family == "pie" else mark.artists[0]
-        if entry.container is not None and mark.container == entry.container:
-            return position, mark.artists[0]
-    if entry.target is not None and entry.target in panel.proxies:
-        return _proxied(position, panel, entry.target)
-    bands = [band for line, band in panel.outlines if line == entry.target]
-    return (position, bands[0]) if bands else None
-
-
-def _hidden(text: str) -> bool:
-    """matplotlib shows no legend entry for an empty label or one opening with `_`."""
-    return not text or text.startswith("_")
-
-
-def _proxied(position: int, panel: Panel, proxy: int) -> tuple[int, int] | None:
-    """The one series mark of the panel with no shown label of its own and the proxy's colour."""
-    rgb = cast("LineGeometry | RectGeometry", panel.axes.artists[proxy].geometry).color[:3]
-    matches = [
-        mark.artists[0]
-        for mark in series_marks(panel)
-        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))
-    ]
-    return (position, matches[0]) if len(matches) == 1 else None
-
-
-def _proxy(entry: LegendEntry, candidates: list[_Candidate]) -> tuple[int, int] | None:
-    rgb = None if entry.proxy_color is None else entry.proxy_color[:3]
-    matches = [
-        (position, mark.artists[0])
-        for position, mark, own_label, own in candidates
-        if rgb is not None and own_label == entry.text and own == rgb
-    ]
-    return matches[0] if len(matches) == 1 else None
-
-
-def _encoding(
-    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
-) -> tuple[int, int, str] | None:
-    keyed = entry.elements_of
-    if keyed is None or keyed[0] is None or entry.axes is None or entry.axes not in by_axes:
-        return None
-    panel = panels[by_axes[entry.axes]]
-    if not any(m.family == "scatter" and m.artists[0] == keyed[0] for m in panel.marks):
-        return None
-    return entry.axes, keyed[0], keyed[1]
-
-
-def _size_key_panel(
-    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
-) -> Panel | None:
-    """The panel whose hand-built size key is this entry's handle, if it is one."""
-    position = by_axes.get(entry.axes) if entry.axes is not None else None
-    if position is None or entry.target not in panels[position].size_keys:
-        return None
-    return panels[position]
-
-
-def _sized(entry: LegendEntry, panel: Panel) -> tuple[int, int, str] | None:
-    """A hand-built size key explains the sizes of the one scatter of its panel that draws its
-    size, when its label types one number, that size (sizes are drawn values, R8)."""
-    artists = panel.axes.artists
-    size = cast("ScatterGeometry", artists[cast("int", entry.target)].geometry).sizes[0]
-    drawing = [
-        mark.artists[0]
-        for mark in panel.marks
-        if mark.family == "scatter"
-        and size in cast("ScatterGeometry", artists[mark.artists[0]].geometry).sizes
-    ]
-    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):
-        return None
-    return panel.index, drawing[0], "sizes"
-
-
-def _read(
-    legend: Legend,
-    panels: tuple[Panel, ...],
-    by_axes: dict[int, int],
-    candidates: list[_Candidate],
-) -> tuple[Names, set[tuple[int, int, str]]]:
-    names: Names = {}
-    encodings: set[tuple[int, int, str]] = set()
-    for entry in legend.entries:
-        keyed = _size_key_panel(entry, panels, by_axes)
-        if entry.elements_of is not None or keyed is not None:
-            encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
-            # A legend draws each key marker at its `markerscale`: a size key at another scale
-            # shows a size its points do not draw.
-            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):
-                block("legend_mismatch", legend.site)
-            encodings.add(encoding)
-            continue
-        named = (
-            _handle(entry, panels, by_axes)
-            if entry.target is not None or entry.container is not None
-            else _proxy(entry, candidates)
-        )
-        if named is None or named in names:
-            block("legend_mismatch", legend.site)
-        names[named] = entry.text
-    return names, encodings
-
-
-def _merge(names: Names, found: Names, legend: Legend) -> None:
-    """A series takes ONE name: another legend naming it otherwise is a mismatch (reviewer-2 F2:
-    an axes legend + a figure legend, or two figure legends, merged with the last name winning)."""
-    for mark, text in found.items():
-        if names.get(mark, text) != text:
-            block("legend_mismatch", legend.site)
-    names |= found
-
-
-def read_legends(panels: tuple[Panel, ...], figure_legends: tuple[Legend, ...]) -> Legends:
-    by_axes = {panel.index: position for position, panel in enumerate(panels)}
-    names: Names = {}
-    encodings: set[tuple[int, int, str]] = set()
-    for position, panel in enumerate(panels):
-        legend = panel.axes.legend
-        if legend is None:
-            continue
-        found, keys = _read(legend, panels, by_axes, _candidates(panels, [position]))
-        _merge(names, found, legend)
-        encodings |= keys
-        series = series_marks(panel)
-        named = [mark for mark in series if (position, mark.artists[0]) in found]
-        if named and len(series) >= 2 and len(named) != len(series):  # noqa: PLR2004
-            block("legend_mismatch", legend.site)
-    everywhere = _candidates(panels, list(range(len(panels))))
-    for legend in figure_legends:
-        found, keys = _read(legend, panels, by_axes, everywhere)
-        _merge(names, found, legend)
-        encodings |= keys
-    return Legends(names, frozenset(encodings))
-'''
-
-_SOURCES["verifier.figure.mark_rules"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Mark rules over one judged panel (`.claude/rules/figure.md` § Mark rules).
-
-Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_finite` → bars
-(`bar_not_from_zero`, `bars_overlap`, `bar_width_varies`) → `x_not_ordered` → `hist_counts` →
-`pie_not_whole` →
-`area_not_from_zero` → scatter encodings. Each block marks the line that drew the offending mark.
-"""
-
-import itertools
-import math
-from typing import Final, TypeVar, cast
-
-from verifier.figure.description import (
-    Axes,
-    BandGeometry,
-    Geometry,
-    HistRecord,
-    LineGeometry,
-    PieRecord,
-    PolygonGeometry,
-    RectGeometry,
-    ScatterGeometry,
-    WedgeGeometry,
-)
-from verifier.figure.parts import Mark, Panel
-from verifier.figure.reasons import block
-from verifier.figure.shapes import Bar, band_edges, bars, coordinates
-
-_T = TypeVar("_T")
-
-_TOLERANCE: Final = 1e-9
-_ULPS: Final = 64
-# matplotlib computes wedge angles in float32 (`np.asarray(x, np.float32)` in `Axes.pie`).
-_PIE_DEGREES: Final = 1e-4
-
-
-def _site(axes: Axes, mark: Mark) -> int | None:
-    return axes.artists[mark.artists[0]].site
-
-
-def _slack(*coordinates: float, size: float) -> float:
-    """What float error alone can move a coordinate by: a few ulps at its magnitude, or a
-    billionth of the part's own size. A slack scaled by the magnitude alone let bars at 1e12
-    overlap by half their width (reviewer-2 F1)."""
-    return max(_ULPS * math.ulp(max(abs(value) for value in coordinates)), _TOLERANCE * size)
-
-
-def _record_values(axes: Axes, mark: Mark) -> list[float]:
-    """Inputs a mark received besides its geometry: hist inputs + edges, pie values."""
-    if mark.container is not None:
-        record = axes.containers[mark.container].hist
-        return [] if record is None else [*record.values, *record.bins]
-    return [] if mark.pie is None else list(axes.pies[mark.pie].values)
-
-
-_NO_LINE: Final = frozenset({"None", "none", "", " "})
-_SEGMENT: Final = 2  # points a stroke needs
-
-
-def _clear(rgba: tuple[float, ...] | None) -> bool:
-    return rgba is None or rgba[3] == 0.0
-
-
-def _cycled(values: tuple[_T, ...], index: int) -> _T | None:
-    """matplotlib cycles a collection's per-point properties over its points."""
-    return values[index % len(values)] if values else None
-
-
-def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
-    """Whether scatter point `index` draws any ink: a size above zero, and a visible face or a
-    visible edge of nonzero width."""
-    face = _cycled(geometry.colors, index)
-    edge = _cycled(geometry.edges, index)
-    width = _cycled(geometry.linewidths, index)
-    return bool(_cycled(geometry.sizes, index)) and (
-        (face is not None and not _clear(face))
-        or (edge is not None and not _clear(edge) and bool(width))
-    )
-
-
-def _line_ink(geometry: LineGeometry) -> bool:
-    """A line draws a stroke: a style, a width, a colour, two points, and dashes with ink."""
-    return not (
-        geometry.linestyle in _NO_LINE
-        or geometry.linewidth == 0.0
-        or _clear(geometry.color)
-        or len(geometry.x) < _SEGMENT
-        or geometry.dash_on == 0.0
-    )
-
-
-def _marker_ink(geometry: LineGeometry) -> bool:
-    """A line's markers draw: a marker of some size, its face (a filled marker) or its edge."""
-    return not (
-        geometry.marker in _NO_LINE
-        or geometry.markersize == 0.0
-        or (
-            (not geometry.marker_filled or _clear(geometry.marker_face))
-            and (_clear(geometry.marker_edge) or geometry.marker_edge_width == 0.0)
-        )
-    )
-
-
-def _no_ink(geometry: Geometry) -> bool:
-    """The artist's final styling draws nothing (or, a line, leaves points unshown): transparent,
-    no stroke and no marker, zero size, an empty marker path; markers on a chosen subset of a line
-    that draws no stroke hide the rest of its points (reviewer-1 F3, reviewer-2 F3)."""
-    if isinstance(geometry, LineGeometry):
-        if _line_ink(geometry):
-            return False
-        return not _marker_ink(geometry) or geometry.markevery
-    if isinstance(geometry, ScatterGeometry):
-        return geometry.marker_segments == 0 or any(
-            not _point_ink(geometry, index) for index in range(len(geometry.offsets))
-        )
-    patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
-    return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
-
-
-def _check_drawn(axes: Axes, panel: Panel) -> None:
-    """What a mark receives but does not show: a hidden panel or artist, a non-finite value."""
-    if not axes.visible:
-        block("mark_hidden", axes.site)
-    for mark in panel.marks:
-        for index in mark.artists:
-            artist = axes.artists[index]
-            if not artist.visible or artist.alpha == 0.0 or _no_ink(artist.geometry):
-                block("mark_hidden", artist.site)
-        if mark.family == "bar":  # a bar of zero thickness shows no area (reviewer-2 F3)
-            for bar in bars(axes, mark):
-                if bar.thickness == 0.0:
-                    block("mark_hidden", axes.artists[bar.index].site)
-    for mark in panel.marks:
-        values = [value for _, value, _ in coordinates(axes, mark)] + _record_values(axes, mark)
-        geometry = axes.artists[mark.artists[0]].geometry
-        dropped = (
-            isinstance(geometry, BandGeometry)
-            and geometry.band is not None
-            and geometry.inputs != len(geometry.band.x)
-        )
-        if dropped or not all(math.isfinite(value) for value in values):
-            block("value_not_finite", _site(axes, mark))
-
-
-def _stacked(bar: Bar, every: list[tuple[bool, Bar]], *, horizontal: bool) -> bool:
-    """G1 for a bar off zero: it continues another bar at its position, on the same side of 0."""
-    same_side = bar.extent == 0.0 or (bar.extent > 0.0) == (bar.base > 0.0)
-    return same_side and any(
-        other.index != bar.index
-        and other_horizontal == horizontal
-        and (other.key, other.thickness) == (bar.key, bar.thickness)
-        and other.end == bar.base
-        for other_horizontal, other in every
-    )
-
-
-def _check_bars(axes: Axes, panel: Panel) -> None:
-    every = [
-        (mark.horizontal, bar)
-        for mark in panel.marks
-        if mark.family in ("bar", "hist")
-        for bar in bars(axes, mark)
-    ]
-    for horizontal, bar in every:
-        if bar.base != 0.0 and not _stacked(bar, every, horizontal=horizontal):
-            block("bar_not_from_zero", axes.artists[bar.index].site)
-    boxes = sorted(
-        (*_box(cast("RectGeometry", axes.artists[bar.index].geometry)), bar.index)
-        for _, bar in every
-    )
-    for position, (x0, x1, y0, y1, index) in enumerate(boxes):
-        for other_x0, other_x1, other_y0, other_y1, other in boxes[position + 1 :]:
-            if other_x0 >= x1 - _slack(x1, other_x0, size=x1 - x0):
-                break
-            width = min(x1, other_x1) - other_x0
-            height = min(y1, other_y1) - max(y0, other_y0)
-            if width > _slack(
-                x0, x1, other_x0, other_x1, size=min(x1 - x0, other_x1 - other_x0)
-            ) and height > _slack(
-                y0, y1, other_y0, other_y1, size=min(y1 - y0, other_y1 - other_y0)
-            ):
-                block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar
-
-
-def _check_widths(axes: Axes, panel: Panel) -> None:
-    """The bars of one series share one thickness: an area that varies with it shows a second
-    quantity no key explains (user ruling, luna F6). A histogram's widths are its bins, which
-    `hist_counts` reads."""
-    for mark in panel.marks:
-        if mark.family == "bar":
-            first, *rest = (bar.thickness for bar in bars(axes, mark))
-            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):
-                block("bar_width_varies", _site(axes, mark))
-
-
-def _box(rect: RectGeometry) -> tuple[float, float, float, float]:
-    """A drawn rectangle in data x/y, whatever its orientation."""
-    return (
-        min(rect.x, rect.x + rect.width),
-        max(rect.x, rect.x + rect.width),
-        min(rect.y, rect.y + rect.height),
-        max(rect.y, rect.y + rect.height),
-    )
-
-
-def _check_order(axes: Axes, panel: Panel) -> None:
-    """G9 / ruling 3: a line runs monotone in x, either way."""
-    for mark in panel.marks:
-        geometry = axes.artists[mark.artists[0]].geometry
-        if mark.family == "line" and isinstance(geometry, LineGeometry):
-            steps = [b - a for a, b in itertools.pairwise(geometry.x)]
-            if any(step < 0 for step in steps) and any(step > 0 for step in steps):
-                block("x_not_ordered", _site(axes, mark))
-
-
-def _counts(record: HistRecord) -> list[int] | None:
-    """numpy's histogram over the drawn edges (last bin closed); None when an input falls out."""
-    bins = record.bins
-    counts = [0] * (len(bins) - 1)
-    for value in record.values:
-        if not bins[0] <= value <= bins[-1]:
-            return None
-        index = next(i for i in range(len(counts)) if value < bins[i + 1] or i == len(counts) - 1)
-        counts[index] += 1
-    return counts
-
-
-def _hist_ok(axes: Axes, mark: Mark, record: HistRecord) -> bool:
-    bins = record.bins
-    plain = record.histtype == "bar" and record.datasets == 1
-    if not plain or record.weighted or record.cumulative or len(bins) != len(mark.artists) + 1:
-        return False
-    if any(b <= a for a, b in itertools.pairwise(bins)):
-        return False
-    counts = _counts(record)
-    if counts is None:  # R2: an input the drawn bins leave out
-        return False
-    total = sum(counts)
-    for position, bar in enumerate(bars(axes, mark)):
-        low, high = bins[position], bins[position + 1]
-        width = high - low
-        count = counts[position]
-        expected = (count / width) / total if record.density else float(count)
-        if not (
-            abs(bar.center - (low + high) / 2) <= _slack(low, high, size=width)
-            and bar.thickness <= width * (1 + _TOLERANCE)
-            and bar.extent == expected
-        ):
-            return False
-    return True
-
-
-def _check_hist(axes: Axes, mark: Mark) -> None:
-    record = cast("HistRecord", axes.containers[cast("int", mark.container)].hist)
-    if not _hist_ok(axes, mark, record):
-        block("hist_counts", _site(axes, mark))
-
-
-def _pie_ok(record: PieRecord, wedges: list[WedgeGeometry]) -> bool:
-    total = sum(record.values)
-    if len(wedges) != len(record.values) or total <= 0.0:
-        return False  # a partial pie (`normalize=False`, total < 1) fails the 360° sum below
-    if len({(wedge.r, wedge.width) for wedge in wedges}) != 1:
-        return False
-    shares = [value / total if record.normalize else value for value in record.values]
-    arcs = sorted(
-        (wedge.theta1, wedge.theta2, share) for wedge, share in zip(wedges, shares, strict=True)
-    )
-    for (start, end, share), following in itertools.zip_longest(arcs, arcs[1:]):
-        if abs((end - start) - 360.0 * share) > _PIE_DEGREES:
-            return False
-        if following is not None and abs(following[0] - end) > _PIE_DEGREES:
-            return False
-    return abs((arcs[-1][1] - arcs[0][0]) - 360.0) <= _PIE_DEGREES
-
-
-def _check_pie(axes: Axes, mark: Mark) -> None:
-    wedges = [cast("WedgeGeometry", axes.artists[i].geometry) for i in mark.artists]
-    if not _pie_ok(axes.pies[cast("int", mark.pie)], wedges):
-        block("pie_not_whole", _site(axes, mark))
-
-
-def _check_scatter(
-    axes: Axes, mark: Mark, explained: frozenset[tuple[str, ...]], *, colorbar: bool
-) -> None:
-    """Varying sizes need a size key of this collection; colours, a colorbar or colour key."""
-    geometry = cast("ScatterGeometry", axes.artists[mark.artists[0]].geometry)
-    if len(set(geometry.sizes)) > 1 and ("sizes",) not in explained:
-        block("marker_size_varies", _site(axes, mark))
-    if len(set(geometry.colors)) > 1 and ("colors",) not in explained and not colorbar:
-        block("marker_color_varies", _site(axes, mark))
-
-
-def check_marks(
-    panel: Panel,
-    colorbars: set[tuple[int, int]],
-    encodings: frozenset[tuple[int, int, str]],
-) -> None:
-    """`colorbars` = (axes, artist) pairs a colorbar is linked to; `encodings` = (axes, artist,
-    prop) a legend key explains."""
-    axes = panel.axes
-    grounded = band_edges(axes, panel)
-    _check_drawn(axes, panel)
-    _check_bars(axes, panel)
-    _check_widths(axes, panel)
-    _check_order(axes, panel)
-    for mark in panel.marks:
-        if mark.family == "hist":
-            _check_hist(axes, mark)
-        elif mark.family == "pie":
-            _check_pie(axes, mark)
-        elif mark.family == "band" and mark.artists[0] not in grounded:
-            block("area_not_from_zero", _site(axes, mark))
-        elif mark.family == "scatter":
-            index = mark.artists[0]
-            explained = frozenset(
-                (prop,)
-                for owner, artist, prop in encodings
-                if (owner, artist) == (panel.index, index)
-            )
-            linked = cast("ScatterGeometry", axes.artists[index].geometry).colorbar
-            colorbar = linked and (panel.index, index) in colorbars
-            _check_scatter(axes, mark, explained, colorbar=colorbar)
 '''
 
 _SOURCES["verifier.figure.series"] = r'''
@@ -8774,7 +8785,7 @@ pass's verdict unless the second passes or explains every value and blocks on a 
 from dataclasses import dataclass
 
 from verifier.figure.anchoring import Aliases, Anchoring
-from verifier.figure.axes_rules import check_axes
+from verifier.figure.axes_rules import check_axes, check_colorbar
 from verifier.figure.columns import check_anchoring, check_labels, drawn
 from verifier.figure.description import Description, Figure
 from verifier.figure.explain import Choice, Context, Unexplained, duplicate_key, explain
@@ -8825,6 +8836,9 @@ def integrity(description: Description) -> Judged | Blocked:
         figure, judged = panels(description)
         for panel in judged:
             check_axes(panel)
+        for axes in figure.axes:
+            if axes.colorbar_of is not None:
+                check_colorbar(axes)
         colorbars = {axes.colorbar_shown for axes in figure.axes if axes.colorbar_shown}
         legends = read_legends(judged, figure.legends)
         for panel in judged:

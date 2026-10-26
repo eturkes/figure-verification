@@ -40,7 +40,7 @@ A reason maps to the stage that raises it: `category_not_unique` (G8) needs the 
 ## Closed artist set (parts)
 
 - Figure: exactly one shown figure (`no_figure` / `multiple_figures`). Children: patch · judged axes · `suptitle` (judged title) · figure legends (judged) · figure texts (listed) · anything else → `artist_not_judged`; `FigureImage` → `raster_image`.
-- Axes: class exactly `Axes`, owned by the figure (`fig.axes`), never a child of another axes (inset) → else `axes_not_judged` (polar, 3D, `SecondaryAxis`, inset). A colorbar axes passes only as the colorbar of a judged scatter, holding its own solids + dividers alone, its tick labels naming their values. A rotated bar is no bar. Two judged axes sharing an axis at the same position = `axes_twin` (G2); overlapping positions otherwise = `axes_overlap`. Each panel judged alone.
+- Axes: class exactly `Axes`, owned by the figure (`fig.axes`), never a child of another axes (inset) → else `axes_not_judged` (polar, 3D, `SecondaryAxis`, inset). A colorbar axes passes only as the colorbar of a judged scatter, holding its own solids + dividers alone (parts); its axes rules run in the axes stage after every panel's (`axes_rules.py::check_colorbar`): neither axis inverted, its tick labels naming their values, the mark = the latest tick call on the axes or its axis. A rotated bar is no bar. Two judged axes sharing an axis at the same position = `axes_twin` (G2); overlapping positions otherwise = `axes_overlap`. Each panel judged alone.
 - Axes children = structural slots (patch, 4 spines, x/y axis, 3 titles, legend) + data artists keyed (class, origin):
 
 | family | class | origin |

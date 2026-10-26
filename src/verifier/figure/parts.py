@@ -24,7 +24,6 @@ from verifier.figure.description import (
     call_line,
 )
 from verifier.figure.reasons import block
-from verifier.figure.ticks import mismatched_tick
 
 Family: TypeAlias = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
 _Kind: TypeAlias = Family | Literal["text"] | None
@@ -216,13 +215,11 @@ _COLORBAR_PARTS: Final = frozenset({("QuadMesh", "Axes.pcolormesh"), ("LineColle
 
 
 def _check_colorbar(axes: Axes) -> None:
-    """A colorbar holds its own parts alone, and its tick labels name the values they mark."""
+    """A colorbar holds its own parts alone (its axes rules run in the axes stage:
+    `axes_rules.py::check_colorbar`)."""
     for artist in axes.artists:
         if (artist.cls, artist.origin) not in _COLORBAR_PARTS:
             block("artist_not_judged", artist.site)
-    for name, axis in (("x", axes.x), ("y", axes.y)):
-        if mismatched_tick(axis, key_labels=False) is not None:
-            block("tick_label_mismatch", call_line(axes.calls, f"{name}ticks") or axes.site)
 
 
 def _judged_axes(figure: Figure) -> list[int]:
