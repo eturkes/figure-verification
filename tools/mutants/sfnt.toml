@@ -359,7 +359,7 @@ mutant = '''        kept = list(
 id = "sfnt-loca-short-read"
 predicate = "a short loca reads doubled offsets (C3)"
 kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
-anchor = '''    if _i16(tables[b"head"], _HEAD_LOCA_FORMAT) == 1:
+anchor = '''    if loca_format == 1:
 '''
 mutant = '''    if True:
 '''
@@ -803,3 +803,10 @@ anchor = '''        if tag in tables or offset + length > len(font):
 '''
 mutant = '''        if tag in tables:
 '''
+
+[[mutant]]
+id = "cr-r286-loca-open"
+predicate = "a loca format past 0 and 1 sends the whole font"
+kills = "tests/test_paste_in_sfnt.py::test_cr_r286_a_loca_format_past_0_and_1_sends_the_whole_font[other-positive]"
+anchor = '''    elif loca_format == 0:'''
+mutant = '''    elif True:'''

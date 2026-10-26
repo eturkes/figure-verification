@@ -3198,10 +3198,15 @@ def _truetype(
     """`glyf` + long `loca` for the kept glyphs and, transitively, every component they use."""
     glyf = tables[b"glyf"]
     loca = tables[b"loca"]
-    if _i16(tables[b"head"], _HEAD_LOCA_FORMAT) == 1:
+    # Closed: 0 = short, 1 = long. FreeType reads any nonzero format as long, so another value
+    # read as short would cut other bytes than it draws (reviewer-7 F3): the whole font goes.
+    loca_format = _i16(tables[b"head"], _HEAD_LOCA_FORMAT)
+    if loca_format == 1:
         offsets = list(struct.unpack_from(f">{count + 1}I", loca))
-    else:
+    elif loca_format == 0:
         offsets = [2 * offset for offset in struct.unpack_from(f">{count + 1}H", loca)]
+    else:
+        raise RefusedError
 
     def data(glyph: int) -> bytes:
         start, end = offsets[glyph], offsets[glyph + 1]

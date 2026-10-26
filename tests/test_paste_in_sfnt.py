@@ -1236,3 +1236,25 @@ def test_q74_c4_mask_bytes_count_against_the_read_budget() -> None:
     with pytest.raises(sfnt.RefusedError):
         sfnt.cut(source, "A")
     assert fonts.cut(source, frozenset("A")) == source
+
+
+@pytest.mark.parametrize("loca_format", [2, -1], ids=["other-positive", "negative"])
+def test_cr_r286_a_loca_format_past_0_and_1_sends_the_whole_font(loca_format: int) -> None:
+    """R286 (code review): FreeType reads every nonzero `indexToLocFormat` as long offsets; the cut
+    read all but 1 as short, so a format-2 font with long offsets lost `A`'s outline. Only 0 and
+    1 are cut; any other value sends the whole font."""
+    base = _truetype()
+    tables = _tables(base)
+    count = struct.unpack_from(">H", tables[b"maxp"], 4)[0]
+    if struct.unpack_from(">h", tables[b"head"], 50)[0] == 0:
+        offsets = [2 * offset for offset in struct.unpack_from(f">{count + 1}H", tables[b"loca"])]
+    else:
+        offsets = list(struct.unpack_from(f">{count + 1}I", tables[b"loca"]))
+    head = tables[b"head"][:50] + struct.pack(">h", loca_format) + tables[b"head"][52:]
+    source = _patched(base, head=head, loca=struct.pack(f">{count + 1}I", *offsets))
+    whole = _ft(source)
+    whole.load_char(ord("A"), flags=LoadFlags.NO_HINTING)
+    assert len(whole.get_path()[0]) == 6  # FreeType draws it as long offsets
+    assert fonts.cut(source, frozenset("A")) == source
+    with pytest.raises(sfnt.RefusedError):
+        sfnt.cut(source, frozenset("A"))
