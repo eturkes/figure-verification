@@ -15,7 +15,7 @@ updates:
       dev-tooling:
         patterns: ["ruff", "mypy", "pytest*", "hypothesis", "detect-secrets", "zizmor"]
     # The host mirrors Open WebUI's Pyodide bundle + its `pydantic==` pin (`.claude/rules/owui.md`):
-    # an Open WebUI release moves these pins (`.agent/deferred.md`), never a version PR. Security
+    # held while the target stays Open WebUI 0.12.3 (`.agent/spec.md` Upgrade rulings). Security
     # updates still open (`update-types` binds version updates alone); the audit stage reads them too.
     ignore:
       - dependency-name: "numpy"
@@ -57,7 +57,7 @@ updates:
     cooldown:
       default-days: 7
     # The host mirrors Open WebUI's Pyodide bundle + its `pydantic==` pin (`.claude/rules/owui.md`):
-    # an Open WebUI release moves these pins (`.agent/deferred.md`), never a version PR. Security
+    # held while the target stays Open WebUI 0.12.3 (`.agent/spec.md` Upgrade rulings). Security
     # updates still open (`update-types` binds version updates alone); the audit stage reads them too.
     ignore:
       - dependency-name: "numpy"
