@@ -288,6 +288,8 @@ def test_m23_f4_a_cross_site_or_rebound_request_gets_no_reply(
         assert client.post("/v1/chat/completions", content=body, headers=as_json).status_code == 200
 
 
+# Litestar warns on a bare `localhost` base_url; the bind name under test IS that name.
+@pytest.mark.filterwarnings("ignore:The base_url '.+' might cause issues:UserWarning")
 def test_m23_f4_the_stub_answers_its_bind_name_and_the_loopback_spellings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
