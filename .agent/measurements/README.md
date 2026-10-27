@@ -316,6 +316,17 @@ uv run --locked python .agent/measurements/codex_context.py <codex-bin> --chatgp
 
 `--chatgpt` sends one completion on the ChatGPT subscription signed in at `~/.codex/auth.json`.
 
+## Live gpt-6-luna record — codex-cli 0.164.0
+
+`codex-0164/` = banner arm `simple` × 1 fresh chat through `webui/launch.sh --codex --fresh` at
+`4eafab5` on an idle CPU (load 1.1-1.9 on 8 threads): codex-cli 0.164.0 (`codex` on `PATH`, the
+app-server child's binary read from `/proc`), `gpt-6-luna` at reasoning effort `low`, the production
+pair (tool sha256 `f627b206eb91d73c…`, filter `ee1709408432d3cd…`), Open WebUI 0.12.3, headless
+Chromium 155 at normal scheduling class (`systemd-run --user`). Result: pass with 1 PNG before and
+after reload, 23 s; the program (sha256 `d4ae2893b746d720…`) sums `revenue` per `region` and sets
+`ylim(0, max × 1.1)`. Rerun: the Q78 commands with `simple` alone and `codex-0164` as the output
+directory.
+
 
 ## Live gpt-6-luna record — Q78
 
