@@ -279,6 +279,18 @@ arm wrote one program in all 5 runs, byte-identical to its Q70 program. Same tup
 Rerun: the M19.9 commands with `webui/launch.sh --fresh` (backend on the dGPU at normal CPU class;
 the host's wrapper: `CLAUDE.local.md`) and `deps-u3` as the output directory.
 
+## Live stub record — stub-idle
+
+`stub-idle/` = the six banner arms on the stub, 1 run each, against `webui/launch.sh --stub
+--fresh` at `4eafab5` on an idle CPU (load 2.6-2.9 on 8 threads) (demo pair `webui/demo-paste-in/`:
+tool sha256 `0f0e27f5557fef82…`, filter `39748887c8773cb9…`), Open WebUI 0.12.3, headless Chromium
+155 at normal scheduling class (`systemd-run --user`). Honest arms 3/3 pass with 1 PNG, before and
+after reload; misleading arms 3/3 block with 0 PNGs: `misleading` + `ja-misleading`
+`zero_not_in_limits`, `ja-clinic-misleading` `axis_inverted`; 16-17 s per arm. The same arms had
+timed out `browser_timeout` at host load 13-20, on this lock and on the lock before it (upgrade 2).
+Rerun: the M19.9 commands with `webui/launch.sh --stub --fresh`, 1 attempt per arm and `stub-idle`
+as the output directory.
+
 ## Live gpt-6-luna record — luna
 
 `luna/` = 55 live cases (`luna/cases.json`: honest, misleading and out-of-scope requests over
