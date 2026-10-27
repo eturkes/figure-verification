@@ -14,6 +14,22 @@ updates:
     groups:
       dev-tooling:
         patterns: ["ruff", "mypy", "pytest*", "hypothesis", "detect-secrets", "zizmor"]
+    # The host mirrors Open WebUI's Pyodide bundle + its `pydantic==` pin (`.claude/rules/owui.md`):
+    # an Open WebUI release moves these pins (`.agent/deferred.md`), never a version PR. Security
+    # updates still open (`update-types` binds version updates alone); the audit stage reads them too.
+    ignore:
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "matplotlib"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "seaborn"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pydantic-core"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
 
   # The proposer runtime is a SEPARATE py3.15 CUDA project with its own lock; the gate
   # venv never resolves it, so it needs its own update stream.
@@ -40,6 +56,22 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    # The host mirrors Open WebUI's Pyodide bundle + its `pydantic==` pin (`.claude/rules/owui.md`):
+    # an Open WebUI release moves these pins (`.agent/deferred.md`), never a version PR. Security
+    # updates still open (`update-types` binds version updates alone); the audit stage reads them too.
+    ignore:
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "matplotlib"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "seaborn"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
+      - dependency-name: "pydantic-core"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
 
   # The Node measurement harness (puppeteer-core; dev-only, never served) has its own pnpm lock,
   # which the audit stage reads.
