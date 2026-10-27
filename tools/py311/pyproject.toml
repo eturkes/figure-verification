@@ -19,7 +19,7 @@ dependencies = [
     "pyyaml>=6",
     "pydantic==2.13.4",
     "matplotlib==3.10.8",
-    "pandas==3.0.2",
+    "pandas==3.0.6",
     "seaborn==0.13.2",
     "fonttools>=4.67",
     "markdown-it-py>=4",
