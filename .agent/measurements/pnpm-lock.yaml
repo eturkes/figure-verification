@@ -173,8 +173,8 @@ importers:
         specifier: 14.3.3
         version: 14.3.3
       markdown-it-attrs:
-        specifier: 5.0.0
-        version: 5.0.0(markdown-it@14.3.3)
+        specifier: 5.0.1
+        version: 5.0.1(markdown-it@14.3.3)
       puppeteer-core:
         specifier: 25.16.0
         version: 25.16.0
@@ -244,8 +244,8 @@ packages:
   linkify-it@5.0.2:
     resolution: {integrity: sha512-ONTm2jCMAVZjgQa/Fy1kScXsuOoF5NPTsoFBdE1KVIZ2vAh/r9+Bqo+0jINCBYnavTPQZz38QzFTme79ENoN3Q==}
 
-  markdown-it-attrs@5.0.0:
-    resolution: {integrity: sha512-7Wvp3Fc1YsHsj1oRKli1DGAMyGhozldtU99wEl4plc6OBsv1WZB+zT3Lgm1/49rVMvXWiYXbUU8rz3X6VVGKaQ==}
+  markdown-it-attrs@5.0.1:
+    resolution: {integrity: sha512-dTP49/FLERwbgqmfIG5LwnC99qecIJYalKQbl3pY+7Hajk+Z+cazeEZaKwofpM9KFxvfRVF0UN9GYxKKAakfNg==}
     engines: {node: '>=6'}
     peerDependencies:
       markdown-it: '>= 9.0.0'
@@ -367,7 +367,7 @@ snapshots:
     dependencies:
       uc.micro: 2.1.0
 
-  markdown-it-attrs@5.0.0(markdown-it@14.3.3):
+  markdown-it-attrs@5.0.1(markdown-it@14.3.3):
     dependencies:
       markdown-it: 14.3.3
 
