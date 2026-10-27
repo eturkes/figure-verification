@@ -46,10 +46,10 @@ def _project(root: Path, files: dict[str, str]) -> None:
     subprocess.run([_GIT, "init", "-q"], cwd=root, check=True)  # noqa: S603
 
 
-def _credit(root: Path, node: str, report: Path) -> subprocess.CompletedProcess[str]:
+def _credit(root: Path, node: str, report: Path, *options: str) -> subprocess.CompletedProcess[str]:
     tool = str(root / "tools" / _TOOL.name)
     return subprocess.run(  # noqa: S603 - argv built from constants + paths made here
-        [sys.executable, tool, node, "--workers", "2", "--json", str(report)],
+        [sys.executable, tool, node, "--workers", "2", "--json", str(report), *options],
         cwd=root,
         env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
         capture_output=True,
@@ -129,6 +129,30 @@ def test_cr_r346_trials_grade_by_the_mutation_testing_elements_states() -> None:
     }
     for trial, grade in _GRADES:
         assert any(trial is graded_trial for graded_trial in graded[grade]), (trial, grade)
+
+
+def test_only_tries_the_named_positions_alone(tmp_path: Path) -> None:
+    """`--only FILE:LINE:COL` = the kill check of a ruled survivor: the scope's mutants at that
+    position alone, every trial listed; a position no mutant sits at refuses (rc 2)."""
+    _project(tmp_path, {"src/verifier/words.py": _MODULE, "tests/test_words.py": _TEST})
+    report = tmp_path / "report.json"
+    node = "tests/test_words.py::test_negated"
+    run = _credit(tmp_path, node, report, "--only", "src/verifier/words.py:1:9")
+    assert run.returncode == 0, run.stdout[-3000:]
+    trials = json.loads(report.read_text("utf-8"))["mutant_trials"]
+    assert {(t["mutant"]["lineno"], t["mutant"]["col_offset"]) for t in trials} == {(1, 9)}
+    assert "KILLED src/verifier/words.py:1:9 String" in run.stdout.splitlines(), run.stdout
+    missed = _credit(
+        tmp_path,
+        node,
+        report,
+        "--only",
+        "src/verifier/words.py:1:9",
+        "--only",
+        "src/verifier/words.py:2:0",
+    )
+    assert missed.returncode == 2, missed.stdout[-3000:]
+    assert "UNMATCHED src/verifier/words.py:2:0: no mutant at this position" in missed.stdout
 
 
 _TWICE = (

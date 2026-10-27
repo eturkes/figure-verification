@@ -262,6 +262,22 @@ def test_cr_r271_a_call_slot_the_reader_never_writes_refuses(where: str, slot: s
     assert _parse(raw) is None
 
 
+def test_credit_a_decoded_call_keeps_its_line_and_its_clock() -> None:
+    """Credit ruling (`description.py::_call`): every recorded slot reaches its owner as (slot,
+    line, clock); the drift guard below wrote line and clock in the same order, so a clock read
+    from the line passed it."""
+    for slot in ("xlim", "ylim", "xscale", "yscale", "xinvert", "yinvert", "xticks", "yticks"):
+        raw = _raw(_PLT + "plt.plot([1, 2], [3, 4])\n")
+        raw["figures"][0]["axes"][0]["calls"] = {slot: [2, 1]}
+        parsed = _parse(raw)
+        assert parsed is not None and parsed.figures[0].axes[0].calls == ((slot, 2, 1),), slot
+    for slot in ("ticks", "invert", "style"):
+        raw = _raw(_PLT + "plt.plot([1, 2], [3, 4])\n")
+        raw["figures"][0]["axes"][0]["x"]["calls"] = {slot: [2, 1]}
+        parsed = _parse(raw)
+        assert parsed is not None and parsed.figures[0].axes[0].x.calls == ((slot, 2, 1),), slot
+
+
 def test_cr_r271_the_decoder_admits_every_slot_the_reader_records() -> None:
     """Every slot a reader hook records decodes (the two sets are written in two modules)."""
     axes_slots = {"xlim", "ylim", "xscale", "yscale", "xinvert", "yinvert", "xticks", "yticks"}

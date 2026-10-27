@@ -27,6 +27,10 @@ Steps, every one fail-closed:
    credits nothing.
 
 rc 0 = every valid mutant killed · 1 = complete, survivors listed · 2 = abnormal trials or no run.
+
+`--only FILE:LINE:COL` (repeatable) tries the scope's mutants at those positions alone, every
+trial listed: the kill check a ruled survivor's test answers, never a credit (a credit = the whole
+scope). A position no mutant sits at = rc 2.
 """
 
 import argparse
@@ -38,7 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -69,9 +73,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 _SPLICE = "_mutation_splice"
 _SPLICE_SOURCE = '''"""poodle's CLI with each mutant spliced at the byte offsets `ast` reports."""
 
+import json
 import multiprocessing
+import os
 
 import poodle.cli
+import poodle.core
 import poodle.run
 import poodle.util
 
@@ -86,8 +93,21 @@ def splice(mutant, file_lines):
     return lines
 
 
+def only(create, positions):
+    def chosen(work):
+        mutants = create(work)
+        return [m for m in mutants if [str(m.source_file), m.lineno, m.col_offset] in positions]
+
+    return chosen
+
+
 if __name__ == "__main__":
     poodle.util.mutate_lines = poodle.run.mutate_lines = splice
+    if "MUTATION_CREDIT_ONLY" in os.environ:
+        positions = json.loads(os.environ["MUTATION_CREDIT_ONLY"])
+        poodle.core.create_mutants_for_all_mutators = only(
+            poodle.core.create_mutants_for_all_mutators, positions
+        )
     # Trials run in pool workers: `fork` hands them the patch, 3.14's `forkserver` would not.
     multiprocessing.set_start_method("fork")
     poodle.cli.main()
@@ -219,15 +239,31 @@ def _config(stage: Path, node: str, scope: list[str]) -> Path:
     return path
 
 
-def _report(verdicts: dict[str, list[dict[str, Any]]]) -> list[str]:
+def _position(text: str) -> list[str | int]:
+    """`FILE:LINE:COL` → [file, line, byte col], the key poodle's mutants carry."""
+    file, line, column = text.rsplit(":", 2)
+    return [file, int(line), int(column)]
+
+
+def _unmatched(trials: Sequence[dict[str, Any]], positions: Collection[str]) -> list[str]:
+    tried = {
+        f"{trial['mutant']['source_file']}:{trial['mutant']['lineno']}:"
+        f"{trial['mutant']['col_offset']}"
+        for trial in trials
+    }
+    return sorted(set(positions) - tried)
+
+
+def _report(verdicts: dict[str, list[dict[str, Any]]], *, every: bool = False) -> list[str]:
     lines = [f"{name} {len(trials)}\n" for name, trials in verdicts.items()]
-    for name in ("survived", "invalid", "abnormal"):
+    listed = ("killed", "timeout") if every else ()
+    for name in (*listed, "survived", "invalid", "abnormal"):
         for trial in verdicts[name]:
             mutant, result = trial["mutant"], trial["result"]
             where = f"{mutant['source_file']}:{mutant['lineno']}:{mutant['col_offset']}"
             lines.append(f"\n{name.upper()} {where} {mutant['mutator_name']}\n")
             lines.append(mutant.get("unified_diff") or f"{mutant['text']}\n")
-            if name != "survived":
+            if name not in ("killed", "survived"):
                 lines.append(f"{result['reason_code']}: {str(result['reason_desc'])[-600:]}\n")
     return lines
 
@@ -239,6 +275,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("node", help="one pytest node, e.g. tests/test_x.py::test_y")
     parser.add_argument("--workers", type=int, default=4, help="parallel trials (default 4)")
     parser.add_argument("--json", type=Path, help="also write poodle's full report here")
+    parser.add_argument(
+        "--only",
+        action="append",
+        type=_position,
+        metavar="FILE:LINE:COL",
+        help="try the mutants at this position alone (repeatable): a kill check, never a credit",
+    )
     args = parser.parse_args(argv)
 
     stage = Path(tempfile.mkdtemp(prefix="mutation-credit-"))
@@ -253,13 +296,17 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         sys.stdout.write(f"node {args.node}\nscope {len(scope)} files\n")
         sys.stdout.writelines(f"  {path}\n" for path in scope)
+        env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+        if args.only:
+            sys.stdout.write(f"only {len(args.only)} positions: a kill check, never a credit\n")
+            env["MUTATION_CREDIT_ONLY"] = json.dumps(args.only)
         report = stage / "poodle-report.json"
         config = _config(stage, args.node, scope)
         poodle = [sys.executable, "-m", _SPLICE, "-c", str(config)]
         run = subprocess.run(  # noqa: S603 - argv built from constants + paths made here
             [*poodle, "-w", str(args.workers), "--json", str(report)],
             cwd=stage,
-            env={key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
+            env=env,
             capture_output=True,
             check=False,
         )
@@ -273,9 +320,15 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copyfile(report, args.json)
         trials = results["mutant_trials"]
         verdicts = classify(trials)
-        sys.stdout.writelines(_report(verdicts))
+        sys.stdout.writelines(_report(verdicts, every=bool(args.only)))
         if not trials or len(trials) != results["summary"]["trials"]:
             sys.stdout.write("INCOMPLETE: the report lists fewer trials than poodle ran\n")
+            return 2
+        missed = _unmatched(trials, [":".join(map(str, key)) for key in args.only or ()])
+        if missed:
+            sys.stdout.writelines(
+                f"UNMATCHED {key}: no mutant at this position\n" for key in missed
+            )
             return 2
         if verdicts["abnormal"]:
             return 2

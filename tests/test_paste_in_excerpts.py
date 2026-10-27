@@ -482,3 +482,23 @@ def test_cr_r285_a_statement_shows_the_else_or_finally_header_it_sits_under(
     described = parse_description(run(program))
     assert described is not None and described.error is None
     assert dict(excerpts(program, described, None, None))["marks"] == expected
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("if False:\n    pass\nelif True:\n    x = 0\n    plt.plot([1, 2])\n", {2, 4, 6}),
+        ("if False:\n    x = 0\n    y = 0\nelif True:\n    plt.plot([1, 2])\n", {2, 5, 6}),
+    ],
+    ids=["elif-arm-of-two", "if-arm-of-two"],
+)
+def test_credit_a_continuation_header_adds_its_own_line_alone(
+    body: str, expected: set[int]
+) -> None:
+    """Credit ruling (`excerpts.py::_blocks` + `_span`): an `elif` header spans the lines between
+    the previous arm's LAST statement and its own arm's FIRST, so neither arm's other statements
+    join the listing (the R285 cases hold one statement per arm)."""
+    program = "import matplotlib.pyplot as plt\n" + body
+    described = parse_description(run(program))
+    assert described is not None and described.error is None
+    assert dict(excerpts(program, described, None, None))["marks"] == expected

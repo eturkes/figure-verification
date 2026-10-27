@@ -143,6 +143,18 @@ def test_cr_r309_an_oversize_file_blocks_csv_too_large() -> None:
     )
 
 
+def test_credit_the_byte_ceiling_admits_a_file_of_its_own_length() -> None:
+    """Credit ruling (`csvread.py::_read_csv` + `limits.py::PysrcLimits`): a valid file of exactly
+    8,000,000 bytes reads; one byte more refuses by its length before any parse (NUL bytes would
+    refuse `csv_not_parsable` once parsed)."""
+    from verifier.figure.sources import Table, Unreadable, read_table  # noqa: PLC0415
+
+    at_limit = b"k,v\n" + (b"a" * 497 + b",1\n") * 15_999 + b"b" * 493 + b",1\n"
+    assert len(at_limit) == 8_000_000
+    assert isinstance(read_table("big.csv", at_limit), Table)
+    assert read_table("big.csv", b"\x00" * 8_000_001) == Unreadable("big.csv", "csv_too_large")
+
+
 def test_sources_profile_faults_leave_columns_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
     from verifier.figure import sources  # noqa: PLC0415 - the module whose limits are moved
     from verifier.pysrc.limits import PysrcLimits  # noqa: PLC0415

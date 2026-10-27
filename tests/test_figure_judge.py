@@ -7,6 +7,7 @@ since the judge reads descriptions alone.
 """
 
 import json
+import math
 from collections.abc import Callable
 from typing import Any
 
@@ -391,6 +392,84 @@ def test_j3_a_reported_number_past_parsing_names_no_position(field: str) -> None
 
     assert isinstance(_judge(source), Judged)
     assert _edited(source, change) == Blocked("tick_label_mismatch", 3)
+
+
+@pytest.mark.parametrize(
+    ("source", "inside", "outside"),
+    [
+        (_PLT + "plt.bar([0, 2], [1, 1], width=2)\n", 1.5e-9, 2.5e-9),
+        (_PLT + "plt.bar([1e12, 1e12 + 1], [1, 1], width=1)\n", 64, 65),
+    ],
+    ids=["billionth-of-the-width", "ulps-at-1e12"],
+)
+def test_credit_bars_may_overlap_by_the_float_slack_alone(
+    source: str, inside: float, outside: float
+) -> None:
+    """Credit ruling (`mark_rules.py::_slack`): two bars may overlap by 1e-9 of their own width or
+    64 ulps at their magnitude, whichever is larger, and by no more; a smaller tolerance, fewer
+    ulps or a tolerance divided by the width blocks the first case of each pair."""
+    ulps = source.count("1e12") > 0
+
+    def overlap(amount: float) -> Callable[[dict[str, Any]], None]:
+        def change(raw: dict[str, Any]) -> None:
+            first, second = (artist["geometry"] for artist in _axes(raw)["artists"][:2])
+            gap = amount * math.ulp(1e12) if ulps else amount
+            second["x"] = first["x"] + first["width"] - gap
+
+        return change
+
+    assert isinstance(_edited(source, overlap(inside)), Judged)
+    assert _edited(source, overlap(outside)) == Blocked("bars_overlap", 2)
+
+
+@pytest.mark.parametrize(
+    ("source", "inside", "outside"),
+    [
+        (_PLT + "plt.hist([0.5], bins=[0, 2])\n", 1.5e-9, 2.5e-9),
+        (_PLT + "plt.hist([1e12 + 0.5], bins=[1e12, 1e12 + 2])\n", 64, 65),
+    ],
+    ids=["billionth-of-the-bin", "ulps-at-1e12"],
+)
+def test_credit_a_hist_bar_sits_on_its_bin_within_the_float_slack(
+    source: str, inside: float, outside: float
+) -> None:
+    """Credit ruling (`mark_rules.py::_hist_ok`): a histogram bar's centre may sit off its bin's
+    centre by the same slack as an overlap, and by no more."""
+    ulps = source.count("1e12") > 0
+
+    def shifted(amount: float) -> Callable[[dict[str, Any]], None]:
+        def change(raw: dict[str, Any]) -> None:
+            _axes(raw)["artists"][0]["geometry"]["x"] += amount * math.ulp(1e12) if ulps else amount
+
+        return change
+
+    assert isinstance(_edited(source, shifted(inside)), Judged)
+    assert _edited(source, shifted(outside)) == Blocked("hist_counts", 2)
+
+
+@pytest.mark.parametrize(
+    ("position", "label", "expected"),
+    [
+        (1.00000000000075e-13, "0.000000000000100000000000000000", "pass"),
+        (1.0000000000015e-13, "0.000000000000100000000000000000", "tick_label_mismatch"),
+        (1.004e-13, "0.000000000000100", "pass"),
+        (1.006e-13, "0.000000000000100", "tick_label_mismatch"),
+        (1e-13, "0.000000000000100000000000000000", "pass"),
+    ],
+    ids=["float-error-in", "float-error-out", "half-digit-in", "half-digit-out", "exact"],
+)
+def test_credit_a_tiny_label_denotes_its_position_within_half_a_digit_plus_float_error(
+    position: float, label: str, expected: str
+) -> None:
+    """Credit ruling (`ticks.py::_numeric_ok`): the tolerance = half a unit of the label's last
+    digit PLUS 1e-12 of the compared magnitudes; a 30-digit label leaves the float term alone, a
+    15-digit one the half digit. A smaller term, or the two subtracted, refuses a true label."""
+    source = _PLT + f"plt.plot([1e-13, 2e-13])\nplt.yticks([{position!r}], [{label!r}])\n"
+    verdict = _judge(source)
+    if expected == "pass":
+        assert isinstance(verdict, Judged), verdict
+    else:
+        assert verdict == Blocked("tick_label_mismatch", 3)
 
 
 def test_j4_a_bar_continuing_another_runs_the_same_way() -> None:
