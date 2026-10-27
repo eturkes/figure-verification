@@ -29,9 +29,9 @@ _MODULE = (
 _TEST = (
     "from verifier.words import negated\n\n\n"
     "def test_negated() -> None:\n"
-    '    assert negated("赤ではなく")\n'
-    '    assert negated("青じゃなく")\n'
-    '    assert not negated("緑")\n'
+    '    assert negated("月ではなく")\n'
+    '    assert negated("日じゃなく")\n'
+    '    assert not negated("年")\n'
 )
 
 

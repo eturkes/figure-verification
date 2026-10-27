@@ -62,8 +62,6 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-- [ ] RESUME: code review in progress on branch `cr/fix` (worktree `.scratch/worktrees/cr-fix`); resume notes + remaining order = `.scratch/cr/MAIN-STATE.md` (MAIN scratch).
-- [ ] Code review (MAINTAIN request): every cell of `.agent/review.md` § Code review carries a verdict; each finding fixed with a green acceptance check, a `.agent/deferred.md` row blocked on the user, or routed; the full gate passes on a clean tree at the closing commit.
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
