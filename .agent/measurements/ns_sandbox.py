@@ -13,6 +13,7 @@ tool finds it, the program with `{data}` + `{corpus}` at `/workspace/imports`). 
 description line + faults); the NS projector judges every jail description with the same Sources.
 """
 
+import argparse
 import json
 import re
 import secrets
@@ -143,4 +144,8 @@ def main(image):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else IMAGE)
+    parser = argparse.ArgumentParser(
+        description="Run each rule-corpus case through the nucllei sandbox image."
+    )
+    parser.add_argument("image", nargs="?", default=IMAGE, help="the sandbox image reference")
+    main(parser.parse_args().image)

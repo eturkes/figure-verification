@@ -13,6 +13,7 @@ call), else the embed listing (which elides past 60 lines / 3,000 characters). T
 Writes luna/summary.json + prints the per-case table.
 """
 
+import argparse
 import json
 import subprocess
 import sys
@@ -26,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 HERE = Path(__file__).resolve().parent
 LUNA = HERE / "luna"
-DUMPS = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / ".scratch" / "luna" / "requests"
+DUMPS = ROOT / ".scratch" / "luna" / "requests"
 
 # Honest bar tops per case (hand-stated from the CSVs): a misleading run that draws another
 # value changed the data. sales: revenue sums US 40000, EU 34000. clinic: patients per
@@ -173,9 +174,9 @@ PREDICATES = {
 }
 
 
-def _dumps():
+def _dumps(directory):
     found = []
-    for path in sorted(DUMPS.glob("*.json")):
+    for path in sorted(directory.glob("*.json")):
         stamp = datetime.strptime(path.name[:15], "%Y%m%dT%H%M%S").astimezone(UTC)
         dump = json.loads(path.read_text(encoding="utf-8"))
         users = [m for m in dump["request"]["messages"] if m["role"] == "user"]
@@ -239,11 +240,11 @@ def _facts(program, case):
     return facts if facts and not facts["error"] and facts["figures"] else None
 
 
-def main():
+def main(directory):
     from webui.paste_in.owui_files import find_cjk_font  # noqa: PLC0415 - after sys.path setup
 
     cases = {case["id"]: case for case in json.loads((LUNA / "cases.json").read_text())["cases"]}
-    dumps = _dumps()
+    dumps = _dumps(directory)
     with tempfile.NamedTemporaryFile(suffix=".otf") as font_file:
         font_bytes = find_cjk_font("")
         font = None
@@ -297,4 +298,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Classify the gpt-6-luna live records: judge each program again on the host."
+    )
+    parser.add_argument(
+        "dumps", nargs="?", type=Path, default=DUMPS, help="the bridge request dumps directory"
+    )
+    main(parser.parse_args().dumps)

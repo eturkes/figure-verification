@@ -10,6 +10,7 @@ what may render: the driver fails on any other markup token. `control` = the sam
 which must render markup (the driver's positive control).
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -70,7 +71,7 @@ def display(note: str, *, japanese: bool) -> str:
     )
 
 
-def main() -> int:
+def main(out: Path) -> int:
     cases: list[dict[str, object]] = []
     for japanese in (False, True):
         language = int(japanese)
@@ -105,10 +106,14 @@ def main() -> int:
                 "content": f"{PASS_TEXTS[language]}\n\n{NOTE_LABELS[language]} {raw}",
             }
         )
-    Path(sys.argv[1]).write_text(json.dumps(cases, ensure_ascii=False, indent=1), "utf-8")
+    out.write_text(json.dumps(cases, ensure_ascii=False, indent=1), "utf-8")
     print(len(cases), "cases")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(
+        description="Write the hostile-text corpus of the nucllei tool markdown."
+    )
+    parser.add_argument("out", type=Path, help="the corpus JSON file")
+    raise SystemExit(main(parser.parse_args().out))

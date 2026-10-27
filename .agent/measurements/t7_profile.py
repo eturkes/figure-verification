@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import json
 from fractions import Fraction
 from pathlib import Path
@@ -6,6 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+argparse.ArgumentParser(
+    description="Write the T7 decimal and integer CSV files and compare their parsed values."
+).parse_args()
 ROOT = Path(__file__).resolve().parent
 SEED = 0x4D31335535435356
 DECIMAL_SAMPLES = 1_000_000

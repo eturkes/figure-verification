@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import json
 import math
 from pathlib import Path
@@ -6,6 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+argparse.ArgumentParser(
+    description="Test whether a digit cap makes Python floats agree with pandas CSV parsing."
+).parse_args()
 ROOT = Path(__file__).resolve().parent
 SEED = 0x4D31335535
 SAMPLES = 1_000_000

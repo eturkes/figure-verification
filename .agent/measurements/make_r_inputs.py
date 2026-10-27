@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Generate fixed float64 and CSV group-reduction probes; stdlib-only."""
 
+import argparse
 import csv
 import hashlib
 import json
@@ -9,6 +10,9 @@ import random
 import re
 from pathlib import Path
 
+argparse.ArgumentParser(
+    description="Write the fixed float64 and CSV group-reduction probes."
+).parse_args()
 ROOT = Path(__file__).resolve().parent / "r-data"
 ROOT.mkdir(exist_ok=True)
 SEED = 13620260915

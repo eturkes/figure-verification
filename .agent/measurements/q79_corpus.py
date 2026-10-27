@@ -7,8 +7,8 @@ Each case = the reply `content` the filter writes (`filter.py::_note_line` after
 text Open WebUI must show in the note's paragraph (the label, a space, the visible note).
 """
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 from verifier.figure.inert import visible
@@ -34,7 +34,7 @@ NOTES = (
 )
 
 
-def main() -> int:
+def main(out: Path) -> int:
     cases = []
     for japanese in (False, True):
         metadata = {"user_message": {"content": "グラフ" if japanese else "Chart"}}
@@ -50,10 +50,14 @@ def main() -> int:
                     "expected": f"{label} " + "".join(map(visible, shown)),
                 }
             )
-    Path(sys.argv[1]).write_text(json.dumps(cases, ensure_ascii=False, indent=1), "utf-8")
+    out.write_text(json.dumps(cases, ensure_ascii=False, indent=1), "utf-8")
     print(len(cases), "cases")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(
+        description="Write the hostile model-note corpus through the production note line."
+    )
+    parser.add_argument("out", type=Path, help="the corpus JSON file")
+    raise SystemExit(main(parser.parse_args().out))

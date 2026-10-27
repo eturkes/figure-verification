@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Compare encoded reduction bits/dtypes/order; named one-bit positive control."""
 
+import argparse
 import json
 import math
 import struct
@@ -85,4 +86,7 @@ def main():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Compare the reduction bits, data types and order of the host and the sandbox."
+    ).parse_args()
     main()

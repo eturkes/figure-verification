@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Project the measured outputs onto each published M13.6 claim; read no expected files."""
 
+import argparse
 import json
 from pathlib import Path
 
@@ -252,4 +253,7 @@ def main():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Project the reduction measurements onto each published M13.6 claim."
+    ).parse_args()
     main()

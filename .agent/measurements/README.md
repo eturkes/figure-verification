@@ -20,7 +20,10 @@ nice -n 19 ionice -c3 uv run --locked python .agent/measurements/rerun_all.py
 The driver replays every ID, compares its independent `results/<id>.json`, and prints `<id>: PASS`
 or `<id>: FAIL <cause>`. Missing dependencies/results and mismatches return nonzero; later IDs still
 run. README table IDs, driver IDs and expected-file IDs must match. Optional positional IDs select
-an explicit subset; `--check-only` compares prior results without rerunning measurements.
+an explicit subset; `--check-only` compares prior results without rerunning measurements. A full
+replay first runs each `*.py` harness with `--help` (rc 0, `usage:`) and an unknown argument (rc 2)
+and prints `cli: PASS` or `cli: FAIL <scripts>`: every harness parses its arguments before it
+measures.
 
 Logs + raw results → `all-data/`; reduction evidence → `r-data/`. The driver shares successful
 input generators within one invocation. Every Node leg runs the one installed bundle.

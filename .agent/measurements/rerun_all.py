@@ -378,6 +378,35 @@ class Replay:
         shutil.rmtree(self.state, ignore_errors=True)
 
 
+def cli_contract():
+    """Every harness answers `--help` (rc 0, `usage:`) and refuses an unknown argument (rc 2)
+    before it measures; a full replay runs this first."""
+    env = {**os.environ, "PYTHONPATH": str(PROJECT)}
+    broken = []
+    for script in sorted(ROOT.glob("*.py")):
+        runs = [
+            subprocess.run(  # noqa: S603 - fixed argv
+                [sys.executable, str(script), argument],
+                cwd=PROJECT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            for argument in ("--help", "--no-such-option")
+        ]
+        if not (
+            runs[0].returncode == 0
+            and runs[0].stdout.startswith("usage:")
+            and runs[1].returncode == 2
+            and "error:" in runs[1].stderr
+        ):
+            broken.append(script.name)
+    if broken:
+        fail(f"no --help or unknown-argument refusal: {', '.join(broken)}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Replay measurements and check their published claims."
@@ -400,6 +429,13 @@ def main():
     replay = None if args.check_only else Replay()
     failures = 0
     try:
+        if replay and not args.ids:
+            try:
+                cli_contract()
+                print("cli: PASS", flush=True)
+            except RuntimeError as exc:
+                failures += 1
+                print(f"cli: FAIL {exc}", file=sys.stderr, flush=True)
         if replay:
             for name in ids:
                 (ROOT / "results" / f"{name}.json").unlink(missing_ok=True)

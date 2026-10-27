@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Locale-order control and integer aggregate renderer boundary probes."""
 
+import argparse
 import io
 import json
 import locale
@@ -131,6 +132,9 @@ def canonical_witness():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Run the locale-order control and the integer aggregate probes."
+    ).parse_args()
     cell = "1e-23"
     parsed = float(pd.read_csv(io.StringIO("v\n" + cell + "\n"))["v"].iloc[0])
     expected = float(cell)

@@ -15,6 +15,7 @@ the largest |value| the computation yields there. TRIALS per size per grid. Host
 --locked python .agent/measurements/x1_transforms.py`.
 """
 
+import argparse
 import json
 import random
 from collections import defaultdict
@@ -44,7 +45,8 @@ def made_up(rng, grid, top, size):
 def covers(series, explanation, values):
     if any(point.value not in values for point in series.points):
         return False  # a necessary condition `_coverage` would also fail
-    return all(explain._coverage(series, explanation))
+    # No request backs a point (the judge's `by_request` with no typed numbers).
+    return all(explain._coverage(series, explanation, [False] * len(series.points)))
 
 
 def measure(table, rng):
@@ -118,6 +120,9 @@ def request_leg(rng):
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Measure the chance matches of the admitted computations."
+    ).parse_args()
     rng = random.Random(45)  # noqa: S311 - a seeded sample, not a secret
     data = ROOT.parents[1] / "data"
     tables = {}

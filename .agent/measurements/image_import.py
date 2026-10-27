@@ -9,11 +9,11 @@ Japanese clinic arm with each filter's embedded stdlib cut; the host compares th
 own `fonts.cut_for` (CPython 3.11 in the image, no fontTools, vs the host's 3.14).
 """
 
+import argparse
 import hashlib
 import json
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -85,4 +85,10 @@ def main(image, out):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    parser = argparse.ArgumentParser(
+        description="Run the generated files inside the official Open WebUI image, network off."
+    )
+    parser.add_argument("image", help="the Open WebUI image reference")
+    parser.add_argument("out", help="the result JSON file")
+    arguments = parser.parse_args()
+    main(arguments.image, arguments.out)

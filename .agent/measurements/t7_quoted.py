@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+argparse.ArgumentParser(
+    description="Write quoted copies of the T7 CSV files and compare their parsed values."
+).parse_args()
 ROOT = Path(__file__).resolve().parent
 results = {}
 for kind in ("decimals", "integers"):

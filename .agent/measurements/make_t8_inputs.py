@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """T8: seeded fixed-point range probes; retained C10 digit cap tracked separately."""
 
+import argparse
 import csv
 import hashlib
 import json
@@ -162,4 +163,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description="Write the T8 fixed-point range probes.").parse_args()
     main()

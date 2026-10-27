@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Same executable experiment on the host and the installed Open WebUI Pyodide bundle."""
 
+import argparse
 import csv
 import hashlib
 import importlib
@@ -454,9 +455,13 @@ def summary(result):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the reduction probe on the host.")
+    parser.add_argument(
+        "destination", nargs="?", type=Path, default=ROOT / "host.json", help="the result JSON file"
+    )
+    destination = parser.parse_args().destination
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FutureWarning)
         result = run()
-    destination = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "host.json"
     destination.write_text(json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n")
     print(json.dumps(summary(result), sort_keys=True))

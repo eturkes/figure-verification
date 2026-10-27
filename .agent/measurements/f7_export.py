@@ -9,6 +9,7 @@ Open WebUI 0.12.3's image; `ja-whole` sends it whole, the path a refused cut tak
 compares, in the bundle's own FreeType, every character the `ja-font` cut keeps with the whole font.
 """
 
+import argparse
 import base64
 import json
 import os
@@ -24,6 +25,9 @@ from webui.paste_in.fonts import characters, cut  # noqa: E402
 from webui.paste_in.owui_files import find_cjk_font  # noqa: E402
 from webui.paste_in.sandbox import wrapper_code  # noqa: E402
 
+argparse.ArgumentParser(
+    description="Print the F7 wrapper programs and the Japanese font legs as JSON."
+).parse_args()
 root = Path(__file__).resolve().parents[2]
 program = next(arm.program for arm in load().arms if arm.id == "simple")
 

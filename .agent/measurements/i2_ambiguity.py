@@ -11,6 +11,7 @@ holding at least k (`null` where none does) with values uniform in [0, 2 * colum
 `uv run --locked python .agent/measurements/i2_ambiguity.py`.
 """
 
+import argparse
 import csv
 import itertools
 import json
@@ -121,6 +122,9 @@ def measure(path, rng):
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Measure value-explanation ambiguity and chance matches over the demo CSVs."
+    ).parse_args()
     rng = random.Random(19)  # noqa: S311 - a seeded sample, not a secret
     data = ROOT.parents[1] / "data"
     result = {path.name: measure(path, rng) for path in sorted(data.glob("*.csv"))}

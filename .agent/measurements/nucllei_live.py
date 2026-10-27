@@ -16,6 +16,7 @@ first `draw_figure` verdict + reason per arm, the call count, faults. Images in 
 (`localhost/nucllei:v20261020-01`, `localhost/nucllei-sandbox:v20261020-01`).
 """
 
+import argparse
 import importlib.util
 import json
 import os
@@ -394,4 +395,11 @@ def main(llens, out, chosen):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], set(sys.argv[3:]))
+    parser = argparse.ArgumentParser(
+        description="Run the nucllei skill live on a private nucllei and sandbox stack."
+    )
+    parser.add_argument("llens", help="the llens checkout")
+    parser.add_argument("out", help="the output directory")
+    parser.add_argument("arms", nargs="*", help="run these arms; default: all")
+    arguments = parser.parse_args()
+    main(arguments.llens, arguments.out, set(arguments.arms))

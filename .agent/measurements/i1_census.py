@@ -7,6 +7,7 @@ compares the two. Origin = qualname of the OUTERMOST frame in the matplotlib Axe
 the artist's constructor and the program (`.claude/rules/figure.md`).
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -174,6 +175,9 @@ def measure(data):
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Count the matplotlib artists of each census program on the host."
+    ).parse_args()
     root = Path(__file__).resolve().parent
     result = measure(str(root.parents[1] / "data"))
     (root / "i1-host.json").write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")

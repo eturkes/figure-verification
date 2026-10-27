@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -6,6 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+argparse.ArgumentParser(
+    description="Write the S6 float CSV file and its expected cell values."
+).parse_args()
 ROOT = Path(__file__).resolve().parent / "s6-data"
 ROOT.mkdir(exist_ok=True)
 CSV = ROOT / "floats.csv"

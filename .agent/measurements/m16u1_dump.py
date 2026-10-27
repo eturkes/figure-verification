@@ -6,9 +6,9 @@ stub sends) runs through the reader beside `data/sales.csv`, and the judge decid
 and the arm's request under the demo's substitution anchoring.
 """
 
+import argparse
 import contextlib
 import json
-import sys
 import tempfile
 from pathlib import Path
 
@@ -20,6 +20,11 @@ from webui.paste_in import checks
 from webui.paste_in.reasons import REASONS
 from webui.paste_in.reply import PASS_TEXTS
 
+parser = argparse.ArgumentParser(
+    description="Write the M16 harness input: each check text and the expected stub pass reply."
+)
+parser.add_argument("out", type=Path, help="the harness input JSON file")
+out = parser.parse_args().out
 root = Path(__file__).resolve().parents[2]
 arm = next(arm for arm in load().arms if arm.id == "simple")
 content = (root / "data" / arm.dataset).read_bytes()
@@ -48,4 +53,4 @@ table = {
     "reasons": REASONS,
     "pass_text": f"{PASS_TEXTS[0]}\n\n{verdict.interpretation}",
 }
-Path(sys.argv[1]).write_text(json.dumps(table, ensure_ascii=False), encoding="utf-8")
+out.write_text(json.dumps(table, ensure_ascii=False), encoding="utf-8")

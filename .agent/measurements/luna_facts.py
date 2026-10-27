@@ -8,8 +8,8 @@ it asked for is decided from these facts, so a verifier defect cannot hide its o
 JSON line: per axes its position, limits, scales, inversion, labels, bars, scatters, wedges, lines.
 """
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 import matplotlib as mpl
@@ -26,7 +26,11 @@ def _no_show(*_args: object, **_kwargs: object) -> None:
 
 
 plt.show = _no_show
-source = Path(sys.argv[1]).read_text(encoding="utf-8")
+parser = argparse.ArgumentParser(
+    description="Print the figure facts of one chart program, read with plain matplotlib."
+)
+parser.add_argument("program", type=Path, help="the chart program file")
+source = parser.parse_args().program.read_text(encoding="utf-8")
 error = None
 try:
     # Running the recorded program IS the measurement (a non-adversarial program, ruling 7).

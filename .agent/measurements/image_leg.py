@@ -2,14 +2,18 @@
 """Runs INSIDE the Open WebUI image: import each generated file, construct it, judge each arm, and
 cut each test font with the filter's own stdlib cut (Q74), which needs no fontTools."""
 
+import argparse
 import hashlib
 import importlib.util
 import json
 import platform
-import sys
 from pathlib import Path
 
-work = Path(sys.argv[1])
+parser = argparse.ArgumentParser(
+    description="Import, construct and judge the generated files inside the Open WebUI image."
+)
+parser.add_argument("work", type=Path, help="the directory that holds the files and the arms")
+work = parser.parse_args().work
 arms = json.loads((work / "arms.json").read_text())
 result = {
     "python": platform.python_version(),

@@ -9,9 +9,9 @@ reply, never from a bridge dump, in each form a reply has shown: Q78's label + o
 bold label + escaped plain text (`inert.prose`), Q80's KaTeX bold Japanese label.
 """
 
+import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 ARMS = (
@@ -60,16 +60,15 @@ def run(record: dict[str, object]) -> dict[str, object]:
     }
 
 
-def main() -> int:
-    records = Path(sys.argv[1])
+def main(records: Path, out: Path | None) -> int:
     rows = [
         run(json.loads(path.read_text(encoding="utf-8")))
         for arm in ARMS
         for path in sorted(records.glob(f"{arm}-[0-9].json"))
     ]
     text = json.dumps(rows, ensure_ascii=False, indent=1) + "\n"
-    if len(sys.argv) > 2:
-        Path(sys.argv[2]).write_text(text, encoding="utf-8")
+    if out is not None:
+        out.write_text(text, encoding="utf-8")
     for row in rows:
         drawn = row["requested_call_drawn"]
         language = row["note_language"] or "-"
@@ -80,4 +79,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(
+        description="Summarize the Q78 live records: verdicts, model notes and note languages."
+    )
+    parser.add_argument("records", type=Path, help="the records directory")
+    parser.add_argument("out", nargs="?", type=Path, help="the summary JSON file")
+    arguments = parser.parse_args()
+    raise SystemExit(main(arguments.records, arguments.out))

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import csv
 import io
 import json
@@ -9,6 +10,9 @@ from typing import Any
 import pandas as pd
 from pandas._libs.parsers import STR_NA_VALUES
 
+argparse.ArgumentParser(
+    description="List the default missing-value spellings that pandas recognizes."
+).parse_args()
 ROOT = Path(__file__).resolve().parent
 
 

@@ -16,6 +16,7 @@ and (mock) exactly the system + user messages; 1 = anything more (printed); 2 = 
 usage: codex_context.py <codex-bin> [--chatgpt]
 """
 
+import argparse
 import asyncio
 import json
 import shlex
@@ -172,11 +173,18 @@ def _wrapper(directory: Path, line: str) -> str:
 
 def main() -> int:
     """Run one probe; print the version, the view and PASS/FAIL."""
-    if len(sys.argv) not in {2, 3} or sys.argv[2:] not in ([], ["--chatgpt"]):
-        print(__doc__.strip().splitlines()[-1])
-        return 2
+    parser = argparse.ArgumentParser(
+        description="Send one completion through the codex bridge and show what the model receives."
+    )
+    parser.add_argument("binary", help="the codex executable: a path or a name on PATH")
+    parser.add_argument(
+        "--chatgpt",
+        action="store_true",
+        help="use the ChatGPT backend, not the local mock provider",
+    )
+    arguments = parser.parse_args()
     # Absolute: the child runs in its own home, where a relative path names nothing.
-    binary, chatgpt = shutil.which(sys.argv[1]), sys.argv[2:] == ["--chatgpt"]
+    binary, chatgpt = shutil.which(arguments.binary), arguments.chatgpt
     if binary is None:
         print(f"{sys.argv[1]}: no such executable")
         return 2

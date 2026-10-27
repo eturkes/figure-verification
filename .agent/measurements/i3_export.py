@@ -6,6 +6,7 @@ matplotlib 3.10.8) and `i3-wrappers.json` (the production `wrapper_code` per pro
 under `/mnt/uploads`), which `node i3_pyodide.mjs owui i3-31403.json` runs in the installed bundle.
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -32,4 +33,7 @@ def main():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Write the I3 host leg: the description and the wrapper of each census program."
+    ).parse_args()
     main()

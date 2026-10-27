@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+import argparse
 import csv
 import io
 import json
@@ -8,6 +9,9 @@ from typing import Any
 
 import pandas as pd
 
+argparse.ArgumentParser(
+    description="List where the standard CSV reader and pandas parse the same bytes differently."
+).parse_args()
 ROOT = Path(__file__).resolve().parent
 FIXTURES: dict[str, bytes] = {
     "quoted_comma": b'a,b\n"x,y",z\n',

@@ -8,6 +8,7 @@ host verdict, matplotlib 3.10.8). `node c1_pyodide.mjs owui c1-31403.json` runs 
 installed bundle; the C1 projector judges each bundle description with the same Sources.
 """
 
+import argparse
 import json
 import sys
 import tomllib
@@ -63,4 +64,7 @@ def main():
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(
+        description="Write the C1 host leg: the wrapper and the host verdict of each corpus case."
+    ).parse_args()
     main()

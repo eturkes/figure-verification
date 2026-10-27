@@ -49,7 +49,8 @@ def test_help_exits_clean_and_an_unknown_argument_exits_2(command: tuple[str, ..
 
 def test_the_command_set_is_every_tracked_entry_point() -> None:
     """A new command joins `_COMMANDS`: every tracked `tools/*.py` + each package `__main__` or
-    module that runs as `__main__` outside the measurement harnesses."""
+    module that runs as `__main__` outside the measurement harnesses (those: the replay driver's
+    `rerun_all.py::cli_contract`)."""
     listed = subprocess.run(
         ["git", "ls-files", "tools/*.py", "model_backend/*.py", "webui/*.py"],  # noqa: S607
         cwd=_ROOT,

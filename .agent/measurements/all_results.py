@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Project raw measurements onto published claims; expectations are never an input."""
 
+import argparse
 import json
 import re
 import sys
@@ -480,7 +481,11 @@ PROJECTORS = {
 }
 
 if __name__ == "__main__":
-    name = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description="Project the raw results of one measurement onto its published claim."
+    )
+    parser.add_argument("name", choices=sorted(PROJECTORS), help="the measurement identifier")
+    name = parser.parse_args().name
     result = PROJECTORS[name]()
     destination = ROOT / "results" / f"{name}.json"
     destination.parent.mkdir(exist_ok=True)
