@@ -43,8 +43,9 @@ WEBUI_RUNTIME=webui/runtime/pyproject.toml
 CONFTEST=tests/conftest.py
 TRACKERS=tests/trackers.py
 FAST_GATE=tools/fast-gate.sh
+SPEC_LINT=.agent/spec-lint
 RESTORE=tools/probe-restore.sh
-TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST" "$TRACKERS" "$FAST_GATE")
+TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST" "$TRACKERS" "$FAST_GATE" "$SPEC_LINT")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -105,6 +106,10 @@ plant_blanket_disable() {
 
 plant_shellcheck_finding() {
     printf 'probe_finding() { echo %s1; }\n' '$' >>"$GATE"
+}
+
+plant_unquoted_test() {
+    printf '[ %sf = x ] && :\n' '$' >>"$1"
 }
 
 plant_uncovered_check() {
@@ -612,9 +617,17 @@ if command -v shellcheck >/dev/null 2>&1; then
     shell_rc=$?
     restore
     verdict shell-ban "$shell_rc" 'blanket shellcheck disables are banned' "$shell_output"
+
+    printf '\n--- shell-spec-lint ---\n'
+    plant_unquoted_test "$SPEC_LINT"
+    shell_output="$(bash -c 'source tools/gate.sh; shell_lint' 2>&1)"
+    shell_rc=$?
+    restore
+    # The finding must sit under the file's own header: SC2086 elsewhere proves nothing.
+    verdict shell-spec-lint "$shell_rc" SC2086 "$(grep -A3 "In $SPEC_LINT line" <<<"$shell_output")"
 else
-    skipped+=(g10-shellcheck shell-ban)
-    printf '\nSKIPPED (shellcheck absent from PATH): g10-shellcheck shell-ban\n'
+    skipped+=(g10-shellcheck shell-ban shell-spec-lint)
+    printf '\nSKIPPED (shellcheck absent from PATH): g10-shellcheck shell-ban shell-spec-lint\n'
 fi
 
 printf '\n=== gate-probe ===\n'

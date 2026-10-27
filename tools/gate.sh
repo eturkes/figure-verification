@@ -161,7 +161,9 @@ type_check() {
 
 shell_lint() {
     local files=()
-    mapfile -t files < <(git ls-files '*.sh')
+    # `.agent/spec-lint` = a template-owned `sh` script the `spec` stage runs: linted here, but
+    # outside the ban below, since its scoped directive ships in the template this repo never edits.
+    mapfile -t files < <(git ls-files '*.sh' .agent/spec-lint)
     shellcheck -- "${files[@]}" || return $?
     # A blanket disable would let a real finding ride through a green gate. The pattern is a
     # regex rather than the literal so this line does not match itself.
