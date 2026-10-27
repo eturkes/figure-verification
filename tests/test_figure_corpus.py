@@ -14,7 +14,7 @@ import pytest
 
 from verifier.figure import reader
 from verifier.figure.description import parse_description
-from verifier.figure.judge import Sources, judge
+from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reasons import Blocked, FigureReason
 
 _CORPUS = Path(__file__).parent / "figure_corpus"
@@ -44,7 +44,7 @@ def test_corpus_case(case: dict[str, Any]) -> None:
     sources = Sources(files, case.get("request"), case.get("anchoring", "strict"))
     verdict = judge(described, sources)
     if case["expect"] == "pass":
-        assert not isinstance(verdict, Blocked), verdict
+        assert isinstance(verdict, Passed), verdict
     else:
         assert isinstance(verdict, Blocked)
         assert verdict.reason == case["expect"]
