@@ -3,8 +3,9 @@
 # command per node = `uv run --locked python tools/mutation_credit.py '<node>' --workers 4 --json <i>.json`.
 # A row = one distinct mutant that SURVIVED a node whose test executes its line (coverage of that
 # node, the tool's own scope run); survivors on lines a node never executes are counted per node in
-# the credit commit body and listed by rerunning the command. Every node = rc 2 (abnormal trials:
-# import-time TypeError / ValueError, poodle-written SyntaxError, loop timeouts) = no credit.
+# the credit commit body and listed by rerunning the command. Graded in the mutation-testing-elements
+# states (user ruling): node 5 rc 1; every other node rc 2 = no credit, on one abnormal trial each
+# (`shapes.py:27` `RGB: TypeAlias = None`, its TypeError raised in `legends.py`); survivors unchanged.
 # Ruling owed (`.agent/deferred.md`): a non-author rules each row against its node's contract.
 # node 0 = tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[group-sum]
 # node 1 = tests/test_figure_values.py::test_cr_r293_a_point_s_colour_and_size_come_from_one_row[rows-in-order]

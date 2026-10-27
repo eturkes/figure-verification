@@ -19,16 +19,20 @@ Steps, every one fail-closed:
    copied tree behind a canary plugin that exits 3 when a scope module imports from anywhere else:
    the editable `.pth` points at the primary `src`, and a trial over those bytes would credit
    unmutated code.
-4. Verdict per mutant from its JSON record alone. poodle counts every nonzero rc but 1 as found (a
-   collection error, a canary exit), so only pytest rc 1 (`Mutant Found`) kills; `Mutant Not Found`
-   survives; anything else is ABNORMAL and credits nothing.
+4. Verdict per mutant from its JSON record alone, in the mutation-testing-elements states (user
+   ruling): pytest rc 1 (`Mutant Found`) kills; a timeout kills too (the mutant never ends, which CI
+   detects); `Mutant Not Found` survives; a collection error whose traceback names the mutated file
+   is INVALID (the mutant does not import or parse: listed, outside the credit). poodle counts every
+   nonzero rc but 1 as found, so anything else (a canary exit, an error elsewhere) is ABNORMAL and
+   credits nothing.
 
-rc 0 = every mutant killed · 1 = complete, survivors listed · 2 = abnormal trials or no run.
+rc 0 = every valid mutant killed · 1 = complete, survivors listed · 2 = abnormal trials or no run.
 """
 
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -91,6 +95,8 @@ if __name__ == "__main__":
 _PYTEST = ("-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "pythonpath=src tests .")
 _KILLED = "Mutant Found"
 _SURVIVED = "Mutant Not Found"
+_TIMEOUT = "Trial Exceeded Timeout"
+_UNREAD = "Other, See Description"
 
 
 class AbortError(Exception):
@@ -107,12 +113,38 @@ def module_name(path: str) -> str:
     return ".".join(parts)
 
 
+def _invalid(trial: dict[str, Any]) -> bool:
+    """pytest's own output: a collection error raised in the mutated file, the canary silent."""
+    output = str(trial["result"]["reason_desc"] or "")
+    if "ERROR collecting" not in output or "mutation canary:" in output:
+        return False
+    # A traceback frame (`src/x.py:3: in <module>`) or, for a SyntaxError, its absolute trial path
+    # (`File ".../src/x.py", line 3`).
+    frame = rf'(?:^|/){re.escape(trial["mutant"]["source_file"])}(?::\d+: in |", line \d+)'
+    return re.search(frame, output, re.MULTILINE) is not None
+
+
 def classify(trials: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    """Each trial into `killed` | `survived` | `abnormal` by its own reason code."""
-    verdicts: dict[str, list[dict[str, Any]]] = {"killed": [], "survived": [], "abnormal": []}
+    """Each trial into `killed` | `timeout` | `survived` | `invalid` | `abnormal`."""
+    verdicts: dict[str, list[dict[str, Any]]] = {
+        "killed": [],
+        "timeout": [],
+        "survived": [],
+        "invalid": [],
+        "abnormal": [],
+    }
     for trial in trials:
         code = trial["result"]["reason_code"]
-        verdict = "killed" if code == _KILLED else "survived" if code == _SURVIVED else "abnormal"
+        if code == _KILLED:
+            verdict = "killed"
+        elif code == _TIMEOUT:
+            verdict = "timeout"
+        elif code == _SURVIVED:
+            verdict = "survived"
+        elif code == _UNREAD and _invalid(trial):
+            verdict = "invalid"
+        else:
+            verdict = "abnormal"
         verdicts[verdict].append(trial)
     return verdicts
 
@@ -185,13 +217,13 @@ def _config(stage: Path, node: str, scope: list[str]) -> Path:
 
 def _report(verdicts: dict[str, list[dict[str, Any]]]) -> list[str]:
     lines = [f"{name} {len(trials)}\n" for name, trials in verdicts.items()]
-    for name in ("survived", "abnormal"):
+    for name in ("survived", "invalid", "abnormal"):
         for trial in verdicts[name]:
             mutant, result = trial["mutant"], trial["result"]
             where = f"{mutant['source_file']}:{mutant['lineno']}:{mutant['col_offset']}"
             lines.append(f"\n{name.upper()} {where} {mutant['mutator_name']}\n")
             lines.append(mutant.get("unified_diff") or f"{mutant['text']}\n")
-            if name == "abnormal":
+            if name != "survived":
                 lines.append(f"{result['reason_code']}: {str(result['reason_desc'])[-600:]}\n")
     return lines
 
