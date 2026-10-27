@@ -21,10 +21,10 @@ Steps, every one fail-closed:
    unmutated code.
 4. Verdict per mutant from its JSON record alone, in the mutation-testing-elements states (user
    ruling): pytest rc 1 (`Mutant Found`) kills; a timeout kills too (the mutant never ends, which CI
-   detects); `Mutant Not Found` survives; a collection error whose traceback names the mutated file
-   is INVALID (the mutant does not import or parse: listed, outside the credit). poodle counts every
-   nonzero rc but 1 as found, so anything else (a canary exit, an error elsewhere) is ABNORMAL and
-   credits nothing.
+   detects); `Mutant Not Found` survives; a collection error is INVALID wherever its traceback
+   points (the mutant does not import or parse: listed, outside the credit). poodle counts every
+   nonzero rc but 1 as found, so anything else (a canary exit, an error outside collection) is
+   ABNORMAL and credits nothing.
 
 rc 0 = every valid mutant killed · 1 = complete, survivors listed · 2 = abnormal trials or no run.
 
@@ -36,7 +36,6 @@ scope). A position no mutant sits at = rc 2.
 import argparse
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -135,14 +134,11 @@ def module_name(path: str) -> str:
 
 
 def _invalid(trial: dict[str, Any]) -> bool:
-    """pytest's own output: a collection error raised in the mutated file, the canary silent."""
+    """pytest's own output: a collection error, the canary silent. Wherever its traceback points
+    (user ruling): poodle's clean run passed, so the mutant broke the import, as a `TypeAlias`
+    mutated to `None` does in the module that writes `RGB | None`."""
     output = str(trial["result"]["reason_desc"] or "")
-    if "ERROR collecting" not in output or "mutation canary:" in output:
-        return False
-    # A traceback frame (`src/x.py:3: in <module>`) or, for a SyntaxError, its absolute trial path
-    # (`File ".../src/x.py", line 3`).
-    frame = rf'(?:^|/){re.escape(trial["mutant"]["source_file"])}(?::\d+: in |", line \d+)'
-    return re.search(frame, output, re.MULTILINE) is not None
+    return "ERROR collecting" in output and "mutation canary:" not in output
 
 
 def classify(trials: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

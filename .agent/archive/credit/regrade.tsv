@@ -1,0 +1,13 @@
+# Re-grade of the twin nodes' one ABNORMAL trial under the widened grading (user ruling (a), queue session): `--only src/verifier/figure/shapes.py:27:17`.
+job	node	killed	survived	invalid	abnormal	rc
+g0	tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[group-sum]	0	0	1	0	0
+g1	tests/test_figure_values.py::test_cr_r293_a_point_s_colour_and_size_come_from_one_row[rows-in-order]	0	0	1	0	0
+g2	tests/test_figure_values.py::test_cr_r293_a_point_s_colour_and_size_come_from_one_row[rows-reversed]	0	0	1	0	0
+g3	tests/test_figure_values.py::test_cr_r293_grouped_channels_bind_to_one_group	0	0	1	0	0
+g4	tests/test_figure_reader.py::test_cr_r272_a_date_reads_in_the_zone_its_data_carry[0]	0	0	1	0	0
+g6	tests/test_figure_corpus.py::test_corpus_case[cr-adjacent-bars-one-ulp-apart]	0	0	1	0	0
+g7	tests/test_figure_corpus.py::test_corpus_case[cr-translated-bars-apart]	0	0	1	0	0
+g8	tests/test_figure_corpus.py::test_corpus_case[cr-translated-hist]	0	0	1	0	0
+g9	tests/test_figure_corpus.py::test_corpus_case[cr-tiny-ticks-labelled-true]	0	0	1	0	0
+g10	tests/test_figure_values.py::test_cr_r309_an_oversize_file_blocks_csv_too_large	0	0	1	0	0
+g11	tests/test_paste_in_excerpts.py::test_cr_r285_a_statement_shows_the_else_or_finally_header_it_sits_under[elif]	0	0	1	0	0

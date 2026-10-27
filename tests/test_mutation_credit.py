@@ -6,8 +6,8 @@ them, so on a line holding a non-ASCII character before the node the mutant land
 SyntaxError trial, or another mutant than the one listed). This repository's sources hold Japanese
 text, so the credit tool runs poodle with a byte-offset splice.
 
-Grading = the mutation-testing-elements states (user ruling, code-review close): a timeout is
-killed; a collection error whose traceback names the mutated file is INVALID (listed, outside the
+Grading = the mutation-testing-elements states (user rulings, code-review close + queue session): a
+timeout is killed; a collection error is INVALID wherever its traceback points (listed, outside the
 credit); every other error stays ABNORMAL, rc 2.
 """
 
@@ -102,8 +102,8 @@ _GRADES = (
     (_trial("Mutant Not Found", None), "survived"),
     (_trial(_OTHER, _FRAME), "invalid"),
     (_trial(_OTHER, _PARSE), "invalid"),
-    (_trial(_OTHER, _ELSEWHERE), "abnormal"),
-    (_trial(_OTHER, _FRAME, source="src/verifier/w.py"), "abnormal"),
+    (_trial(_OTHER, _ELSEWHERE), "invalid"),
+    (_trial(_OTHER, _FRAME, source="src/verifier/w.py"), "invalid"),
     (
         _trial(_OTHER, _FRAME + "\nExit: mutation canary: verifier.x from /usr, outside /tmp"),
         "abnormal",
@@ -124,8 +124,8 @@ def test_cr_r346_trials_grade_by_the_mutation_testing_elements_states() -> None:
         "killed": 1,
         "timeout": 1,
         "survived": 1,
-        "invalid": 2,
-        "abnormal": 6,
+        "invalid": 4,
+        "abnormal": 4,
     }
     for trial, grade in _GRADES:
         assert any(trial is graded_trial for graded_trial in graded[grade]), (trial, grade)
