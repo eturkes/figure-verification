@@ -10,6 +10,7 @@ import hashlib
 import importlib
 import json
 import re
+import shutil
 import subprocess
 import tomllib
 from collections.abc import Callable, Sequence
@@ -24,6 +25,7 @@ import model_backend.settings as backend_settings
 from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
+_GIT = shutil.which("git")
 
 
 class _TrackingEnv:
@@ -761,9 +763,10 @@ def test_p16_runtime_lock_pins_torch_cu126() -> None:
 
 def test_p17_runtime_files_tracked_not_ignored() -> None:
     """P17 separately pins repository tracking and ignore-pattern behavior."""
-    tracked = subprocess.run(
+    assert _GIT is not None, "git is absent from PATH"
+    tracked = subprocess.run(  # noqa: S603
         [
-            "/usr/bin/git",
+            _GIT,
             "ls-files",
             "--error-unmatch",
             "--",
@@ -785,8 +788,8 @@ def test_p17_runtime_files_tracked_not_ignored() -> None:
         "model_backend/runtime/README.md\n"
         "model_backend/runtime/snapshot.json\n"
     )
-    ignored_runtime = subprocess.run(
-        ["/usr/bin/git", "check-ignore", "--no-index", "--stdin"],
+    ignored_runtime = subprocess.run(  # noqa: S603
+        [_GIT, "check-ignore", "--no-index", "--stdin"],
         cwd=_ROOT,
         check=False,
         capture_output=True,
@@ -795,8 +798,8 @@ def test_p17_runtime_files_tracked_not_ignored() -> None:
     )
     assert ignored_runtime.returncode == 1, ignored_runtime.stdout
 
-    ignored_models = subprocess.run(
-        ["/usr/bin/git", "check-ignore", "--no-index", "--quiet", "models/"],
+    ignored_models = subprocess.run(  # noqa: S603
+        [_GIT, "check-ignore", "--no-index", "--quiet", "models/"],
         cwd=_ROOT,
         check=False,
     )

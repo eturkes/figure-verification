@@ -11,6 +11,7 @@ closing review's (D8). D5 (every admitted Python name) retired with the static a
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import get_args
@@ -26,6 +27,7 @@ from webui.paste_in import filter as filter_module
 from webui.paste_in.reasons import OutletCause
 
 _ROOT = Path(__file__).resolve().parents[1]
+_GIT = shutil.which("git")
 _DOCS = {
     "reference": {"en": _ROOT / "docs/verification.md", "ja": _ROOT / "docs/verification.ja.md"},
     "guide": {"en": _ROOT / "docs/checks.md", "ja": _ROOT / "docs/checks.ja.md"},
@@ -46,8 +48,9 @@ def _name(language: str, doc: str) -> str:
 
 
 def _tracked() -> set[str]:
+    assert _GIT is not None, "git is absent from PATH"
     listed = subprocess.run(  # noqa: S603
-        ["/usr/bin/git", "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
+        [_GIT, "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
     ).stdout
     return {os.fsdecode(raw) for raw in listed.split(b"\0") if raw}
 

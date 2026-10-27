@@ -45,6 +45,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
 _LAUNCHER = _ROOT / "webui" / "launch.sh"
+_BASH = shutil.which("bash")
 # Waits, not grading thresholds: a loaded host (load 23 on 4 cores) took past 10 s to READY.
 _SUBPROCESS_TIMEOUT_S = 30.0
 _READY_TIMEOUT_S = 60.0
@@ -255,8 +256,9 @@ raise SystemExit(64)
 def _run_launcher(
     harness: _Harness, *args: str, timeout_s: float = _SUBPROCESS_TIMEOUT_S
 ) -> subprocess.CompletedProcess[str]:
+    assert _BASH is not None, "bash is absent from PATH"
     return subprocess.run(  # noqa: S603
-        ["/bin/bash", str(_LAUNCHER), *args],
+        [_BASH, str(_LAUNCHER), *args],
         cwd=_ROOT,
         env=harness.env,
         capture_output=True,
@@ -304,11 +306,12 @@ def _start_launcher(harness: _Harness, *args: str) -> tuple[subprocess.Popen[str
     stderr_path = harness.log_dir.parent / "launcher.stderr"
     # A background `cmd &` starts pytest with SIGINT ignored, and bash never traps a signal ignored
     # at entry: a Python handler over the spawn makes exec hand the launcher SIG_DFL instead.
+    assert _BASH is not None, "bash is absent from PATH"
     previous = signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
         with stderr_path.open("w", encoding="utf-8") as stderr_file:
             process = subprocess.Popen(  # noqa: S603
-                ["/bin/bash", str(_LAUNCHER), *args],
+                [_BASH, str(_LAUNCHER), *args],
                 cwd=_ROOT,
                 env=harness.env,
                 stdout=subprocess.DEVNULL,
@@ -781,8 +784,9 @@ def _teardown_scenario(tmp_path: Path, port: int, body: str) -> dict[str, str]:
     listener = tmp_path / "listener.py"
     listener.write_text(_LISTENER, encoding="utf-8")
     helpers = 'listening() { port_in_use "$PORT"; }\n'
+    assert _BASH is not None, "bash is absent from PATH"
     result = subprocess.run(  # noqa: S603 - fixed argv
-        ["/bin/bash", "-c", definitions + "\n" + helpers + body],
+        [_BASH, "-c", definitions + "\n" + helpers + body],
         env=os.environ
         | {"PYTHON": sys.executable, "LISTENER": str(listener), "PORT": str(port)}
         | {"SERVICE_LOG": str(tmp_path / "service.log"), "LAUNCH_LOG_DIR": str(tmp_path)},

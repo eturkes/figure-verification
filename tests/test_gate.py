@@ -33,6 +33,7 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _GATE = _REPO_ROOT / "tools" / "gate.sh"
 _GATE_PROBE = _REPO_ROOT / "tools" / "gate-probe.sh"
+_GIT = shutil.which("git")
 # Both purpose-built static suites: neither has a downstream re-check, so both owe firing inputs.
 _PROBED_SUITES = (Path(__file__).resolve(), _REPO_ROOT / "tests" / "test_spec.py")
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
@@ -290,9 +291,10 @@ def test_g13_audit_stage_covers_every_lock() -> None:
         elif words[:2] == ["pnpm", "audit"]:
             audited.add(("pnpm", words[words.index("--dir") + 1]))
 
-    tracked = subprocess.run(
+    assert _GIT is not None, "git is absent from PATH"
+    tracked = subprocess.run(  # noqa: S603
         [
-            "/usr/bin/git",
+            _GIT,
             "ls-files",
             "--",
             "uv.lock",
@@ -313,8 +315,9 @@ def test_g13_audit_stage_covers_every_lock() -> None:
 
 
 def _tracked_paths() -> list[str]:
-    listed = subprocess.run(
-        ["/usr/bin/git", "ls-files", "-z"], cwd=_REPO_ROOT, capture_output=True, check=True
+    assert _GIT is not None, "git is absent from PATH"
+    listed = subprocess.run(  # noqa: S603
+        [_GIT, "ls-files", "-z"], cwd=_REPO_ROOT, capture_output=True, check=True
     )
     return [name for name in listed.stdout.decode().split("\0") if name]
 

@@ -28,6 +28,7 @@ from typing import Protocol, cast
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+_GIT = shutil.which("git")
 
 
 class BundleAPI(Protocol):
@@ -272,8 +273,9 @@ def run_generator(root: Path, *arguments: str) -> subprocess.CompletedProcess[st
 
 def copy_tracked_tree(destination: Path) -> Path:
     """Copy current tracked bytes only, preserving a clean disposable generator input tree."""
+    assert _GIT is not None, "git is absent from PATH"
     listed = subprocess.run(  # noqa: S603
-        ["/usr/bin/git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+        [_GIT, "-C", str(REPO_ROOT), "ls-files", "-z"],
         capture_output=True,
         check=True,
     ).stdout
@@ -301,8 +303,9 @@ def artifact_items(bundle: BundleAPI) -> Iterator[tuple[Path, str]]:
 
 
 def _tracked_python_files() -> tuple[Path, ...]:
+    assert _GIT is not None, "git is absent from PATH"
     listed = subprocess.run(  # noqa: S603
-        ["/usr/bin/git", "-C", str(REPO_ROOT), "ls-files", "-z", "*.py"],
+        [_GIT, "-C", str(REPO_ROOT), "ls-files", "-z", "*.py"],
         capture_output=True,
         check=True,
     ).stdout

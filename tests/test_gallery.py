@@ -11,6 +11,7 @@ passes the real reader + judge (the rule corpus's own cases run in `tests/test_f
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -26,6 +27,7 @@ from verifier.figure.reasons import Blocked
 from webui.paste_in.checks import CHECK_OF
 
 _ROOT = Path(__file__).resolve().parents[1]
+_GIT = shutil.which("git")
 _GALLERY = _ROOT / "docs" / "gallery"
 # Reasons with no chart to show, hand-stated: the run never drew one figure (no_figure,
 # multiple_figures: the reader returns no PNG for two), the verifier itself failed (verifier_error),
@@ -59,8 +61,9 @@ def _entries() -> list[dict[str, Any]]:
 
 
 def _tracked() -> set[str]:
+    assert _GIT is not None, "git is absent from PATH"
     listed = subprocess.run(  # noqa: S603
-        ["/usr/bin/git", "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
+        [_GIT, "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
     ).stdout
     return {os.fsdecode(raw) for raw in listed.split(b"\0") if raw}
 

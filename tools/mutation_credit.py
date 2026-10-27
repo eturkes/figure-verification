@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
+_GIT = shutil.which("git")
 _PACKAGES = ("verifier", "webui", "model_backend", "nucllei_skill")
 _ROOTS = ("src/verifier/", "webui/", "model_backend/", "nucllei_skill/")
 _CANARY = "_mutation_canary"
@@ -150,8 +151,11 @@ def classify(trials: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]
 
 
 def _stage(target: Path) -> None:
-    listed = subprocess.run(
-        ["/usr/bin/git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    if _GIT is None:
+        message = "git is absent from PATH"
+        raise AbortError(message)
+    listed = subprocess.run(  # noqa: S603
+        [_GIT, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         cwd=_ROOT,
         capture_output=True,
         check=True,
@@ -239,10 +243,10 @@ def main(argv: list[str] | None = None) -> int:
 
     stage = Path(tempfile.mkdtemp(prefix="mutation-credit-"))
     try:
-        _stage(stage)
-        (stage / f"{_CANARY}.py").write_text(_CANARY_SOURCE, "utf-8")
-        (stage / f"{_SPLICE}.py").write_text(_SPLICE_SOURCE, "utf-8")
         try:
+            _stage(stage)
+            (stage / f"{_CANARY}.py").write_text(_CANARY_SOURCE, "utf-8")
+            (stage / f"{_SPLICE}.py").write_text(_SPLICE_SOURCE, "utf-8")
             scope = _scope(stage, args.node)
         except AbortError as error:
             sys.stdout.write(f"ABORT: {error}\n")

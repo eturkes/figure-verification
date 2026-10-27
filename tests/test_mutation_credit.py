@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 _TOOL = Path(__file__).resolve().parents[1] / "tools" / "mutation_credit.py"
+_GIT = shutil.which("git")
 _MODULE = (
     'WORDS = ("ではなく", "じゃなく")\n\n\n'
     "def negated(text: str) -> bool:\n"
@@ -41,7 +42,8 @@ def _project(root: Path, files: dict[str, str]) -> None:
         (root / name).write_text(text, "utf-8")
     (root / "tools").mkdir()
     shutil.copy2(_TOOL, root / "tools" / _TOOL.name)
-    subprocess.run(["/usr/bin/git", "init", "-q"], cwd=root, check=True)
+    assert _GIT is not None, "git is absent from PATH"
+    subprocess.run([_GIT, "init", "-q"], cwd=root, check=True)  # noqa: S603
 
 
 def _credit(root: Path, node: str, report: Path) -> subprocess.CompletedProcess[str]:
@@ -149,3 +151,20 @@ def test_cr_r346_a_mutant_that_breaks_the_import_is_invalid_not_abnormal(tmp_pat
     lines = run.stdout.splitlines()
     assert "abnormal 0" in lines, run.stdout[-3000:]
     assert any(line.startswith("INVALID src/verifier/twice.py:4:") for line in lines), run.stdout
+
+
+def test_git_absent_from_path_aborts_naming_it(tmp_path: Path) -> None:
+    """git resolves through `PATH`, never a fixed location (user ruling, template refresh): with
+    none there the tool stages nothing and aborts naming the cause, rc 2."""
+    _project(tmp_path, {})
+    run = subprocess.run(  # noqa: S603 - argv built from constants + paths made here
+        [sys.executable, str(tmp_path / "tools" / _TOOL.name), "tests/test_none.py::test_none"],
+        cwd=tmp_path,
+        env={"PATH": str(tmp_path / "no-bin")},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert run.returncode == 2, run.stdout + run.stderr
+    assert "ABORT: git is absent from PATH" in run.stdout.splitlines(), run.stdout
