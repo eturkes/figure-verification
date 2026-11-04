@@ -21,11 +21,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.9",
-    "mypy>=1.13",
-    "pytest>=8",
+    "ruff>=0.17.3",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
     "pytest-cov>=6",
-    "hypothesis>=6.110",
+    "hypothesis>=6.170.13",
     # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
     # sandbox executes numpy. A numeric test that cannot compare against numpy pins nothing.
     # Pinned EXACTLY to the version the Open WebUI 0.12.3 bundle (Pyodide 314.0.3) carries, because
