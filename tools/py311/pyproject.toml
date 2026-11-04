@@ -12,7 +12,7 @@ dependencies = [
     "litestar>=2.25,<3",
     "uvicorn>=0.54,<1",
     "httpx>=0.28,<1",
-    "pytest>=8",
+    "pytest>=9.2.0",
     "pytest-cov>=6",
     "hypothesis>=6.110",
     "numpy==2.4.3",
