@@ -29,10 +29,19 @@ unselected=()
 seen=()
 # Stages started early, in the background, beside the suites: name -> pid, name -> output file.
 declare -A early_pid=() early_log=()
+# The step ledger (`CLAUDE.md` `Execution`): one tab-separated row per stage a run reaches -- the
+# run's start, tree, step, wall-clock, verdict, class -- so the record of which stages buy signal
+# outlives the scrollback. A red's class starts `?` until it is classified (`.claude/rules/ops.md`).
+# `main` alone sets it, so `tools/fast-gate.sh` (iteration, never the claim) writes no row;
+# `GATE_LEDGER=` (empty) turns it off, as the suite's own gate runs do.
+ledger=""
+ledger_date=""
+ledger_tree=""
+ledger_lost=0
 
-# Every run blocks the critical path, so each result line carries its wall-clock (`CLAUDE.md`
-# `Execution`). A stamp = EPOCHREALTIME in microseconds; stripping every non-digit drops the
-# locale's decimal separator, whichever it is.
+# Each result line carries its wall-clock + verdict (`CLAUDE.md` `Execution`). A stamp =
+# EPOCHREALTIME in microseconds; stripping every non-digit drops the locale's decimal separator,
+# whichever it is.
 stamp() {
     printf '%s' "${EPOCHREALTIME//[!0-9]/}"
 }
@@ -81,8 +90,46 @@ early() {
     early_pid[$name]=$!
 }
 
+# The tree a run grades: HEAD's tree, + a digest of every uncommitted change (tracked diff,
+# untracked files) when one exists, so one id = one input and a red -> green pair on it = a flake.
+gate_tree() {
+    local head digest
+    head="$(git rev-parse --short=12 'HEAD^{tree}' 2>/dev/null)" || {
+        printf 'unknown'
+        return 0
+    }
+    if [ -z "$(git status --porcelain 2>/dev/null)" ]; then
+        printf '%s' "$head"
+        return 0
+    fi
+    digest="$({
+        git diff --binary HEAD
+        git ls-files -z --others --exclude-standard | xargs -0 -r sha256sum --
+    } 2>/dev/null | sha256sum)"
+    printf '%s+%s' "$head" "${digest:0:12}"
+}
+
+# record <step> <seconds> <rc | skip>
+# Each row = one short append, so runs sharing a checkout interleave whole rows; no header line,
+# since two first writers would each write one (the columns live above + in `.claude/rules/ops.md`).
+record() {
+    local verdict=pass class=-
+    [ -n "$ledger" ] || return 0
+    if [ "$3" = skip ]; then
+        verdict=skip
+    elif [ "$3" -ne 0 ]; then
+        verdict=fail class='?'
+    fi
+    # A row that cannot land fails the run (`main`): an unrecorded red can never be classified.
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ledger_date" "$ledger_tree" "$1" "$2" "$verdict" "$class" \
+        >>"$ledger" || {
+        printf 'ledger write failed: %s\n' "$ledger"
+        ledger_lost=1
+    }
+}
+
 stage() {
-    local name="$1" start rc
+    local name="$1" start rc secs=- lines=()
     is_selected "$name" || return 0
     start="$(stamp)"
     shift
@@ -91,12 +138,20 @@ stage() {
         wait "${early_pid[$name]}"
         rc=$?
         cat -- "${early_log[$name]}"
+        # Its own wall-clock = the last word of the line the early subshell printed last.
+        mapfile -t lines <"${early_log[$name]}"
+        if [ "${#lines[@]}" -ne 0 ]; then
+            secs="${lines[-1]##* }"
+            secs="${secs%s}"
+        fi
         rm -f -- "${early_log[$name]}"
     else
         "$@"
         rc=$?
-        printf '%s rc=%d %ss\n' "$name" "$rc" "$(elapsed "$start")"
+        secs="$(elapsed "$start")"
+        printf '%s rc=%d %ss\n' "$name" "$rc" "$secs"
     fi
+    record "$name" "$secs" "$rc"
     if [ "$rc" -ne 0 ]; then
         failed+=("$name")
     fi
@@ -215,6 +270,11 @@ main() {
     local gate_start name
     gate_start="$(stamp)"
     selected=("$@")
+    ledger="${GATE_LEDGER-$REPO_ROOT/.step-ledger.tsv}"
+    if [ -n "$ledger" ]; then
+        printf -v ledger_date '%(%Y-%m-%dT%H:%M:%S%z)T' -1
+        ledger_tree="$(gate_tree)"
+    fi
     trap 'rm -f -- "${early_log[@]}"' EXIT
     early secrets secret_scan
     stage format format_check
@@ -232,6 +292,7 @@ main() {
     elif is_selected shell; then
         skipped+=(shell)
         printf '\n=== shell ===\nshell SKIPPED (shellcheck absent from PATH)\n'
+        record shell - skip
     fi
 
     printf '\n=== gate ===\n'
@@ -244,6 +305,9 @@ main() {
     if [ "${#unselected[@]}" -ne 0 ]; then
         printf 'not selected: %s\n' "${unselected[*]}"
     fi
+    if [ "$ledger_lost" -ne 0 ]; then
+        failed+=(ledger)
+    fi
     if [ "${#skipped[@]}" -ne 0 ]; then
         printf 'skipped: %s\n' "${skipped[*]}"
         # CI exists to run every check: a skip there is a runner-image or workflow change that
@@ -255,6 +319,8 @@ main() {
     fi
     if [ "${#failed[@]}" -ne 0 ]; then
         printf 'FAILED: %s\n' "${failed[*]}"
+        [ -z "$ledger" ] ||
+            printf 'classify each red row in %s: product | gate | flake | planted\n' "$ledger"
         printf 'gate rc=1 %ss\n' "$(elapsed "$gate_start")"
         exit 1
     fi

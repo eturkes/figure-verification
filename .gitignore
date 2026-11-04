@@ -47,6 +47,9 @@ demo/reports/
 .env.*
 !.env.example
 
+# Step ledger: one row per gate stage run on this host (tools/gate.sh; law .claude/rules/ops.md)
+.step-ledger.tsv
+
 # One-command launcher runtime (per-service *.log + launch.pid; regenerable)
 .launch-logs/
 *.log

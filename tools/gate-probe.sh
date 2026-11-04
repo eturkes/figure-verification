@@ -6,13 +6,13 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G25, tests/test_spec.py S1-S11, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G26, tests/test_spec.py S1-S11, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
-# whose output names the expected cause: attribution rides the message, since eleven tests carry
-# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 and G17 four each, S4 six, S6 five, S8 five -- one
-# per conjunct of a compound guard, per detection path, or per widened surface. Targets are
+# whose output names the expected cause: attribution rides the message, since many tests carry
+# more than one probe (`.claude/rules/gate-checks.md` firing records) -- one per conjunct of a
+# compound guard, per detection path, per mechanism, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
 #
@@ -413,6 +413,45 @@ probe g25-fast-gate-stage tests/test_gate.py::test_g25_the_fast_gate_runs_every_
 probe g25-fast-gate-skips tests/test_gate.py::test_g25_the_fast_gate_runs_every_cheap_stage_and_names_the_rest_skipped \
     'fast-gate skip names drifted' \
     sed -i 's/^skipped=(tests311 audit secrets coverage)$/skipped=(tests311 audit coverage)/' "$FAST_GATE"
+
+# G26: one probe per mechanism of the step ledger -- the row, its six columns, a red's class, the run's
+# tree, the classify line, the empty-GATE_LEDGER off switch, a row that cannot land, the tree id's
+# tracked-edit + untracked-file digest.
+probe g26-step-ledger tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'gate runs left no step-ledger rows' \
+    sed -i '/^    record "[$]name" "[$]secs" "[$]rc"$/d' "$GATE"
+
+probe g26-row-shape tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'step-ledger rows lost their six columns' \
+    sed -i 's/%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n/%s\\t%s\\t%s\\t%s\\t%s %s\\n/' "$GATE"
+
+probe g26-red-class tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'step-ledger rows lost a stage, verdict or red class' \
+    sed -i "s/verdict=fail class='?'/verdict=fail/" "$GATE"
+
+probe g26-run-tree tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'step-ledger row lost its date, tree or wall-clock' \
+    sed -i 's/ledger_tree="[$](gate_tree)"/ledger_tree=unknown/' "$GATE"
+
+probe g26-classify-line tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'a red run did not name the ledger to classify it in' \
+    sed -i 's/classify each red row in %s/red rows in %s/' "$GATE"
+
+probe g26-ledger-off tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'an empty GATE_LEDGER still named a ledger' \
+    sed -i 's/{GATE_LEDGER-/{GATE_LEDGER:-/' "$GATE"
+
+probe g26-ledger-write tests/test_gate.py::test_g26_every_gate_run_appends_its_stages_to_the_step_ledger \
+    'a run whose ledger row could not land passed' \
+    sed -i 's/^        failed+=(ledger)$/        :/' "$GATE"
+
+probe g26-tracked-edit tests/test_gate.py::test_g26_the_ledger_tree_id_names_one_input \
+    'step-ledger tree id ignores a tracked edit' \
+    sed -i 's/if \[ -z "[$](git status --porcelain 2>\/dev\/null)" \]; then/if true; then/' "$GATE"
+
+probe g26-untracked tests/test_gate.py::test_g26_the_ledger_tree_id_names_one_input \
+    'step-ledger tree id ignores an untracked file' \
+    sed -i '/git ls-files -z --others --exclude-standard/d' "$GATE"
 
 probe g20-restore-exit tests/test_gate.py::test_g20_a_probe_run_whose_targets_did_not_restore_fails \
     'a failed restore kept the run green' \

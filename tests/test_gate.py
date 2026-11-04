@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G25: static-config invariants of the one gate command.
+"""G6-G26: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
 row Q47 (its row text is the contract); G17 = `CLAUDE.md` `CI gate` (the CI fan-out); G18 = queue
-row "CI skips pass silently" (its row text is the contract).
+row "CI skips pass silently" (its row text is the contract); G26 = `CLAUDE.md` `Execution` (the
+step ledger).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -405,7 +406,9 @@ def test_g17_ci_fans_out_every_stage_on_ci_branches() -> None:
 
 
 def _ci_env(*, ci: bool, **extra: str) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items() if key != "CI"} | extra
+    # An empty `GATE_LEDGER` keeps the suite's own gate runs off the real step ledger (G26).
+    env = {key: value for key, value in os.environ.items() if key != "CI"}
+    env = env | {"GATE_LEDGER": ""} | extra
     return env | {"CI": "true"} if ci else env
 
 
@@ -622,11 +625,11 @@ def test_g21_every_tracked_symlink_resolves_inside_the_repository() -> None:
     assert not faults, f"tracked symlink faults: {faults}"
 
 
-# A home directory in a live tracked file binds it to one machine (`CLAUDE.md` `Authoring`: project
-# files stay portable; machine-bound facts -> `CLAUDE.local.md`). Archived records keep the paths
-# they ran on, and the ledger quotes firing inputs verbatim.
+# A home directory in a live tracked file = a fact true on one machine alone + a private key path,
+# which `CLAUDE.md` `Authoring` routes to the gitignored `CLAUDE.local.md`; this repository is
+# public. Archived records keep the paths they ran on, and the ledger quotes firing inputs verbatim.
 _HOME_PATH = re.compile(r"(?<![\w.])/(?:home|Users|root)/[\w.-]+|\b[A-Za-z]:\\Users\\")
-_PORTABILITY_EXEMPT = (".agent/archive/", ".agent/review.md")
+_HOME_PATH_EXEMPT = (".agent/archive/", ".agent/review.md")
 
 
 def test_g22_no_live_tracked_file_names_a_home_directory() -> None:
@@ -635,7 +638,7 @@ def test_g22_no_live_tracked_file_names_a_home_directory() -> None:
     gaining one fails naming its `file:line`."""
     faults = []
     for name in _tracked_paths():
-        if name.startswith(_PORTABILITY_EXEMPT) or (_REPO_ROOT / name).is_symlink():
+        if name.startswith(_HOME_PATH_EXEMPT) or (_REPO_ROOT / name).is_symlink():
             continue
         try:
             text = (_REPO_ROOT / name).read_text(encoding="utf-8")
@@ -722,3 +725,143 @@ def test_g25_the_fast_gate_runs_every_cheap_stage_and_names_the_rest_skipped() -
         f"fast-gate skip names drifted: {names}"
     )
     assert set(ran) | {"tests311", "audit", "secrets", "tests"} == set(_EXPECTED_STAGES)
+
+
+def _failing_uv(tmp_path: Path) -> tuple[str, str, str]:
+    """`bash`, a `PATH` whose `uv` exits 1 (a gate's `format` stage fails unrun), `git`."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    shell, bash = shutil.which("sh"), shutil.which("bash")
+    assert shell is not None and bash is not None and _GIT is not None
+    fake = bin_dir / "uv"
+    fake.write_text(f"#!{shell}\nexit 1\n", encoding="utf-8")
+    fake.chmod(0o700)
+    return bash, f"{bin_dir}{os.pathsep}{os.environ['PATH']}", _GIT
+
+
+def test_g26_every_gate_run_appends_its_stages_to_the_step_ledger(tmp_path: Path) -> None:
+    """G26 (`CLAUDE.md` `Execution` gate clause + Gate usefulness): a gate run appends one row per
+    stage it reaches to the gitignored step ledger -- date, tree, step, wall-clock, verdict, class
+    -- and a red row's class starts `?`, the gate naming the ledger to classify it in. Acceptance
+    (a fake `uv` failing `format`, the real `spec`): two runs at `GATE_LEDGER` leave six-column
+    rows, `format fail ?` + `spec pass -` twice, each dated + timed + naming HEAD's tree; with
+    `GATE_LEDGER` empty a red names no ledger and writes none; a row that cannot land fails."""
+    bash, path, git = _failing_uv(tmp_path)
+    ledger = tmp_path / "steps.tsv"
+
+    def run(target: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603 - fixed argv
+            [bash, str(_GATE), "format", "spec"],
+            env=_ci_env(ci=False, PATH=path, GATE_LEDGER=target),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    runs = [run(str(ledger)) for _ in range(2)]
+    assert all(each.returncode == 1 for each in runs), [each.stdout for each in runs]
+    rows = [line.split("\t") for line in ledger.read_text().splitlines()] if ledger.exists() else []
+    assert rows, f"gate runs left no step-ledger rows: {rows}"
+    assert all(len(row) == 6 for row in rows), f"step-ledger rows lost their six columns: {rows}"
+    assert [(row[2], row[4], row[5]) for row in rows] == [
+        ("format", "fail", "?"),
+        ("spec", "pass", "-"),
+    ] * 2, f"step-ledger rows lost a stage, verdict or red class: {rows}"
+    head = subprocess.run(  # noqa: S603 - fixed argv
+        [git, "rev-parse", "--short=12", "HEAD^{tree}"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    date = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d{4}")
+    for row in rows:
+        assert (
+            date.fullmatch(row[0]) and row[1].startswith(head) and re.fullmatch(r"\d+\.\d", row[3])
+        ), f"step-ledger row lost its date, tree or wall-clock: {row}"
+    assert all(f"classify each red row in {ledger}" in each.stdout for each in runs), (
+        f"a red run did not name the ledger to classify it in: {runs[0].stdout}"
+    )
+    # The off switch runs a copy rooted in `tmp_path`: a gate that ignores it writes its default
+    # ledger there, never into this checkout's.
+    root = tmp_path / "root"
+    (root / "tools").mkdir(parents=True)
+    shutil.copy(_GATE, root / "tools" / "gate.sh")
+    off = subprocess.run(  # noqa: S603 - fixed argv
+        [bash, str(root / "tools" / "gate.sh"), "format"],
+        env=_ci_env(ci=False, PATH=path),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert off.returncode == 1 and "classify each red row" not in off.stdout, (
+        f"an empty GATE_LEDGER still named a ledger: {off.stdout}"
+    )
+    assert not (root / ".step-ledger.tsv").exists(), "an empty GATE_LEDGER still named a ledger"
+    # A run whose row cannot land fails: an unrecorded run would leave the usefulness record a
+    # silent gap, and a red no ledger holds can never be classified.
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    lost = subprocess.run(  # noqa: S603 - fixed argv
+        [bash, str(_GATE), "spec"],
+        env=_ci_env(ci=False, GATE_LEDGER=str(blocked)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert lost.returncode == 1 and f"ledger write failed: {blocked}" in lost.stdout, (
+        f"a run whose ledger row could not land passed: {lost.stdout}"
+    )
+
+
+def test_g26_the_ledger_tree_id_names_one_input(tmp_path: Path) -> None:
+    """G26: one tree id = one input, read in a scratch repository holding a copy of the gate (its
+    ledger outside it, so no row moves the digest). Acceptance: a clean tree reads HEAD's tree
+    alone; a tracked edit, then an untracked file, each move the digest; the same bytes read the
+    same id."""
+    bash, path, git_bin = _failing_uv(tmp_path)
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(_GATE, repo / "tools" / "gate.sh")
+    (repo / "data.txt").write_text("a\n", encoding="utf-8")
+    isolated = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+
+    def git(*argv: str) -> str:
+        return subprocess.run(  # noqa: S603 - fixed argv
+            [git_bin, *argv],
+            cwd=repo,
+            env=_ci_env(ci=False, **isolated),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("add", "-A")
+    git("-c", "user.name=g26", "-c", "user.email=g26@invalid", "commit", "-q", "-m", "base")
+    trees = tmp_path / "trees.tsv"
+
+    def tree_id() -> str:
+        subprocess.run(  # noqa: S603 - fixed argv
+            [bash, str(repo / "tools" / "gate.sh"), "format"],
+            env=_ci_env(ci=False, PATH=path, GATE_LEDGER=str(trees), **isolated),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return trees.read_text().splitlines()[-1].split("\t")[1]
+
+    clean = tree_id()
+    (repo / "data.txt").write_text("b\n", encoding="utf-8")
+    edited = tree_id()
+    (repo / "extra.txt").write_text("c\n", encoding="utf-8")
+    untracked, again = tree_id(), tree_id()
+    assert clean == git("rev-parse", "--short=12", "HEAD^{tree}"), (
+        f"a clean tree's id is not HEAD's tree: {clean}"
+    )
+    assert edited.startswith(f"{clean}+") and len(edited) == len(clean) + 13, (
+        f"step-ledger tree id ignores a tracked edit: {clean} {edited}"
+    )
+    assert untracked not in (clean, edited) and again == untracked, (
+        f"step-ledger tree id ignores an untracked file or drifts: {edited} {untracked} {again}"
+    )
