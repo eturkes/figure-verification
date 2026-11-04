@@ -21,7 +21,7 @@ dependencies = [
     "matplotlib==3.10.8",
     "pandas==3.0.2",
     "seaborn==0.13.2",
-    "fonttools>=4.67",
+    "fonttools>=4.68.0",
     "markdown-it-py>=4",
     "poodle>=1.3.4",
     "pytest-xdist>=3.8",
