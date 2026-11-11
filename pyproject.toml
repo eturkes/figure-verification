@@ -63,7 +63,7 @@ dev = [
     # Mutation credit (`CLAUDE.md` `Engineering`): the stack's mutation tool, default operators,
     # driven by tools/mutation_credit.py over the files one test executes (research pass, queue
     # row Q53).
-    "poodle>=1.3.4",
+    "poodle>=1.4.0",
     # Gate speed (Q61): the `tests` + `tests311` stages run the suite across every CPU; pytest-cov
     # combines the workers' data, so the 100% branch floor still reads the whole run.
     "pytest-xdist>=3.8",

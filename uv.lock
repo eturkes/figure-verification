@@ -940,7 +940,7 @@ wheels = [
 
 [[package]]
 name = "poodle"
-version = "1.3.4"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -948,9 +948,9 @@ dependencies = [
     { name = "mergedeep" },
     { name = "wcmatch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/b8/5803d75f8a02d0e4eb9f20ffe19890221a41cd48040c3abe56f05de82d6d/poodle-1.3.4.tar.gz", hash = "sha256:8f314584e0d57444187aa2c02e25168e723c477d7566466833965dcfcbc8524f", size = 76592, upload-time = "2026-04-05T02:23:08.955Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/31/6f7484ad815d94391269042915a25e4183bbf58f45bcf188ce59dee7603f/poodle-1.4.0.tar.gz", hash = "sha256:2487ea939b093d4330d3972906fa101f8885bee60ef650fde444d5153f1993c4", size = 82999, upload-time = "2026-10-31T23:51:25.929Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/33/5788cb69150ab891d1aafa6784efe837ca9f888920a0f324861cf8fbd706/poodle-1.3.4-py3-none-any.whl", hash = "sha256:5ea425ff6e51bb252691920e6b7b169bd902ecd491e674b33ebd26917805233e", size = 64775, upload-time = "2026-04-05T02:23:07.744Z" },
+    { url = "https://files.pythonhosted.org/packages/67/87/67b2ec101ecf23240b049e08dbed06694b44c3764192ed1eee7397e0c427/poodle-1.4.0-py3-none-any.whl", hash = "sha256:6c499e763577d659def808914a19ce381187247b08d374d4ebeba10b4da83620", size = 68101, upload-time = "2026-10-31T23:51:24.653Z" },
 ]
 
 [[package]]
@@ -1329,7 +1329,7 @@ dev = [
     { name = "mypy", specifier = ">=1.13" },
     { name = "numpy", specifier = "==2.4.3" },
     { name = "pandas", specifier = "==3.0.2" },
-    { name = "poodle", specifier = ">=1.3.4" },
+    { name = "poodle", specifier = ">=1.4.0" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=6" },
