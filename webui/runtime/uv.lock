@@ -2167,7 +2167,7 @@ wheels = [
 
 [[package]]
 name = "open-webui"
-version = "0.12.3"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "accelerate" },
@@ -2205,6 +2205,7 @@ dependencies = [
     { name = "googleapis-common-protos" },
     { name = "hiredis" },
     { name = "httpx", extra = ["brotli", "cli", "http2", "socks", "zstd"] },
+    { name = "httpx2" },
     { name = "itsdangerous" },
     { name = "joserfc" },
     { name = "langchain-classic" },
@@ -2261,9 +2262,9 @@ dependencies = [
     { name = "xlrd" },
     { name = "youtube-transcript-api" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/4a/8bed8472a5e23f25c475621c680bc2fc4207055cb3d1f449dea6a64c1338/open_webui-0.12.3.tar.gz", hash = "sha256:3e3c53a3263027edf743d4214f519a49ff61c3cb04fad9f7c3afeffaf855696b", size = 14895152, upload-time = "2026-10-16T11:53:38.592Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/34/94a4054889994041271b08edf7bdb29a3f5649d286e914766e2ced1f01cb/open_webui-0.13.0.tar.gz", hash = "sha256:f326e1841763dc7305c0daffcef35810eca2365c40488e5befddd8df0af3415e", size = 15525497, upload-time = "2026-11-03T12:30:04.985Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/22/05/a40238c1fab2956e6371729482f7389c6b1fec936198c733b0d84f1d5722/open_webui-0.12.3-py3-none-any.whl", hash = "sha256:6d716039a5c15ecdb1db12f99dd9c79ea5c86d3d7bbd9a67054dd26f1f534747", size = 105980169, upload-time = "2026-10-16T11:53:34.76Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/1f/8140b01d0d009a9a6ab11df9583f0389cdd06751d655866c11f92b02907c/open_webui-0.13.0-py3-none-any.whl", hash = "sha256:290ad8f76d2ad61aef9941b18a30ef2866beed09b1085b4693155c09d4e4a22d", size = 108377099, upload-time = "2026-11-03T12:30:01.407Z" },
 ]
 
 [[package]]
@@ -3865,15 +3866,15 @@ wheels = [
 
 [[package]]
 name = "uvicorn"
-version = "0.51.0"
+version = "0.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "h11" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/65/b7c6c443ccc58678c91e1e973bbe2a878591538655d6e1d47f24ba1c51f3/uvicorn-0.51.0.tar.gz", hash = "sha256:f6f4b69b657c312f516dd2d268ab9ae6f254b11e4bac504f37b2ab58b24dd0b0", size = 94412, upload-time = "2026-07-08T10:59:05.962Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/34/30e9280707135d2cfc589dfff3cb796bd07a3aeb1a3e415ba09dd89d7bb4/uvicorn-0.54.0.tar.gz", hash = "sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620", size = 112283, upload-time = "2026-09-25T06:52:37.601Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl", hash = "sha256:5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b", size = 73219, upload-time = "2026-07-08T10:59:04.44Z" },
+    { url = "https://files.pythonhosted.org/packages/38/0c/b54a4fdd7f90a3af8b02ebc9ce6712c2c208b7926a2f7bad95c33ebbe943/uvicorn-0.54.0-py3-none-any.whl", hash = "sha256:505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf", size = 87427, upload-time = "2026-09-25T06:52:35.829Z" },
 ]
 
 [package.optional-dependencies]
@@ -4011,7 +4012,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "open-webui", specifier = "==0.12.3" }]
+requires-dist = [{ name = "open-webui", specifier = "==0.13.0" }]
 
 [[package]]
 name = "win32-setctime"
