@@ -22,6 +22,6 @@
     "highlight.js": "11.11.1",
     "markdown-it": "14.3.3",
     "markdown-it-attrs": "5.0.0",
-    "puppeteer-core": "25.16.0"
+    "puppeteer-core": "25.18.1"
   }
 }
